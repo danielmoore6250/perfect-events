@@ -1,0 +1,9 @@
+[build]
+  command = "npm run build"
+  functions = "netlify/functions"
+  publish = "build"
+
+[dev]
+  command = "npm start"
+  functions = "netlify/functions"
+  port = 3000
