@@ -49,7 +49,7 @@ function EnquireModal({ isOpen, onClose }) {
 
       await emailjs.send(
         process.env.REACT_APP_EMAILJS_SERVICE_ID,
-        'template_ki9zsxj',
+        process.env.REACT_APP_EMAILJS_TEMPLATE_BUSINESS,
         templateParams
       );
 
