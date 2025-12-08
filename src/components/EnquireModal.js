@@ -1,5 +1,9 @@
 import { useState } from 'react';
+import emailjs from '@emailjs/browser';
 import '../styles/EnquireModal.css';
+
+// Initialize EmailJS
+emailjs.init(process.env.REACT_APP_EMAILJS_PUBLIC_KEY);
 
 function EnquireModal({ isOpen, onClose }) {
   const [formData, setFormData] = useState({
@@ -31,20 +35,23 @@ function EnquireModal({ isOpen, onClose }) {
     setError('');
 
     try {
-      // Call Netlify function (in development: /.netlify/functions/send-enquiry)
-      const response = await fetch('/.netlify/functions/send-enquiry', {
-        method: 'POST',
-        body: JSON.stringify(formData),
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
+      // Send email via EmailJS
+      const templateParams = {
+        from_name: formData.name,
+        from_email: formData.email,
+        phone: formData.phone,
+        event_date: formData.eventDate,
+        event_type: formData.eventType,
+        venue: formData.venue,
+        guest_count: formData.guestCount,
+        message: formData.message
+      };
 
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to send enquiry');
-      }
+      await emailjs.send(
+        process.env.REACT_APP_EMAILJS_SERVICE_ID,
+        'template_ki9zsxj',
+        templateParams
+      );
 
       setIsSubmitted(true);
 

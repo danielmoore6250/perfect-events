@@ -28,9 +28,10 @@ function App() {
         <div className="nav-container">
           <div className="logo">
             <img 
-              src={process.env.PUBLIC_URL + '/perfect-events-logo.png'} 
+              src={process.env.PUBLIC_URL + '/newLogo.png'} 
               alt="Perfect Events NI" 
               className="logo-img"
+              style={{ borderRadius: '50%' }}
               onError={(e) => {e.target.style.display = 'none'}}
             />
             <span className="logo-text">Perfect Events NI</span>

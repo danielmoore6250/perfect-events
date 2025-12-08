@@ -6,4 +6,3 @@
 [dev]
   command = "npm start"
   functions = "netlify/functions"
-  port = 3000
