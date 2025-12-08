@@ -6,3 +6,6 @@
 [dev]
   command = "npm start"
   functions = "netlify/functions"
+
+[context.production.environment]
+  SECRETS_SCAN_OMIT_KEYS = "REACT_APP_EMAILJS_PUBLIC_KEY,REACT_APP_EMAILJS_SERVICE_ID,REACT_APP_EMAILJS_TEMPLATE_BUSINESS"
