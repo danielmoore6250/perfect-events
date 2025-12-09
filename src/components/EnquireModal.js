@@ -47,9 +47,17 @@ function EnquireModal({ isOpen, onClose }) {
         message: formData.message
       };
 
+      // Send business enquiry email
       await emailjs.send(
         process.env.REACT_APP_EMAILJS_SERVICE_ID,
         process.env.REACT_APP_EMAILJS_TEMPLATE_BUSINESS,
+        templateParams
+      );
+
+      // Send user confirmation email
+      await emailjs.send(
+        process.env.REACT_APP_EMAILJS_SERVICE_ID,
+        process.env.REACT_APP_EMAILJS_TEMPLATE_CONFIRMATION,
         templateParams
       );
 
