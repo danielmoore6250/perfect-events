@@ -94,26 +94,26 @@
       <div class="section">
         <h2>Client Contact Information</h2>
         <ul>
-          <li><span class="label">Name:</span> <span class="value">John Smith</span></li>
-          <li><span class="label">Email:</span> <span class="value">john@example.com</span></li>
-          <li><span class="label">Phone:</span> <span class="value">028 9999 8888</span></li>
+          <li><span class="label">Name:</span> <span class="value">{{from_name}}</span></li>
+          <li><span class="label">Email:</span> <span class="value">{{from_email}}</span></li>
+          <li><span class="label">Phone:</span> <span class="value">{{phone}}</span></li>
         </ul>
       </div>
 
       <div class="section">
         <h2>Event Details</h2>
         <ul>
-          <li><span class="label">Event Type:</span> <span class="value">Wedding</span></li>
-          <li><span class="label">Event Date:</span> <span class="value">2025-06-15</span></li>
-          <li><span class="label">Venue:</span> <span class="value">The Culloden Hotel, Belfast</span></li>
-          <li><span class="label">Guest Count:</span> <span class="value">150</span></li>
+          <li><span class="label">Event Type:</span> <span class="value">{{event_type}}</span></li>
+          <li><span class="label">Event Date:</span> <span class="value">{{event_date}}</span></li>
+          <li><span class="label">Venue:</span> <span class="value">{{venue}}</span></li>
+          <li><span class="label">Guest Count:</span> <span class="value">{{guest_count}}</span></li>
         </ul>
       </div>
 
       <div class="section">
         <h2>Additional Message</h2>
         <div class="message-box">
-          We're looking for a DJ who can play a mix of classic hits and modern music. Would love to discuss your packages and pricing. Thanks!
+          {{message}}
         </div>
       </div>
     </div>

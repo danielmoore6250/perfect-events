@@ -58,7 +58,7 @@ exports.handler = async (event) => {
     // Email to business
     const businessMailOptions = {
       from: process.env.EMAIL_USER,
-      to: 'daniel@perfecteventsni.com',
+      to: 'enquiries@perfecteventsni.com',
       subject: `New Enquiry from ${formData.name} - ${formData.eventType}`,
       html: `
         <!DOCTYPE html>
@@ -228,7 +228,7 @@ exports.handler = async (event) => {
                 <div class="section">
                   <p>If you have any questions before we get back to you, feel free to reply to this email or contact us directly:</p>
                   <div class="contact-info">
-                    <div class="contact-item">📧 <a href="mailto:daniel@perfecteventsni.com" style="color: #0d0d0d; text-decoration: none;">daniel@perfecteventsni.com</a></div>
+                    <div class="contact-item">📧 <a href="mailto:enquiries@perfecteventsni.com" style="color: #0d0d0d; text-decoration: none;">enquiries@perfecteventsni.com</a></div>
                   </div>
                 </div>
 

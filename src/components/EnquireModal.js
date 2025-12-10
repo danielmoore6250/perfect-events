@@ -1,17 +1,14 @@
-import { useState } from 'react';
-import emailjs from '@emailjs/browser';
+import { useState, useEffect } from 'react';
 import '../styles/EnquireModal.css';
 
-// Initialize EmailJS
-emailjs.init(process.env.REACT_APP_EMAILJS_PUBLIC_KEY);
-
-function EnquireModal({ isOpen, onClose }) {
+function EnquireModal({ isOpen, onClose, preSelectedEventType = '' }) {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     phone: '',
     eventDate: '',
-    eventType: 'wedding',
+    eventType: preSelectedEventType,
+    weddingPackage: 'full-night',
     venue: '',
     guestCount: '',
     message: ''
@@ -20,6 +17,16 @@ function EnquireModal({ isOpen, onClose }) {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Update event type when preSelectedEventType changes
+  useEffect(() => {
+    if (preSelectedEventType) {
+      setFormData(prev => ({
+        ...prev,
+        eventType: preSelectedEventType
+      }));
+    }
+  }, [preSelectedEventType, isOpen]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -35,31 +42,20 @@ function EnquireModal({ isOpen, onClose }) {
     setError('');
 
     try {
-      // Send email via EmailJS
-      const templateParams = {
-        from_name: formData.name,
-        from_email: formData.email,
-        phone: formData.phone,
-        event_date: formData.eventDate,
-        event_type: formData.eventType,
-        venue: formData.venue,
-        guest_count: formData.guestCount,
-        message: formData.message
-      };
+      // Send form data to Netlify function
+      const response = await fetch('/.netlify/functions/send-enquiry', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData)
+      });
 
-      // Send business enquiry email
-      await emailjs.send(
-        process.env.REACT_APP_EMAILJS_SERVICE_ID,
-        process.env.REACT_APP_EMAILJS_TEMPLATE_BUSINESS,
-        templateParams
-      );
+      const result = await response.json();
 
-      // Send user confirmation email
-      await emailjs.send(
-        process.env.REACT_APP_EMAILJS_SERVICE_ID,
-        process.env.REACT_APP_EMAILJS_TEMPLATE_CONFIRMATION,
-        templateParams
-      );
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to send enquiry');
+      }
 
       setIsSubmitted(true);
 
@@ -71,7 +67,8 @@ function EnquireModal({ isOpen, onClose }) {
           email: '',
           phone: '',
           eventDate: '',
-          eventType: 'wedding',
+          eventType: '',
+          weddingPackage: 'full-night',
           venue: '',
           guestCount: '',
           message: ''
@@ -79,7 +76,7 @@ function EnquireModal({ isOpen, onClose }) {
         onClose();
       }, 2000);
     } catch (err) {
-      console.error('Email send failed:', err);
+      console.error('Enquiry submission failed:', err);
       setError(err.message || 'Failed to send enquiry. Please try again or contact us directly.');
       setIsLoading(false);
     }
@@ -151,6 +148,7 @@ function EnquireModal({ isOpen, onClose }) {
                     required
                     disabled={isLoading}
                   >
+                    <option value="">Select Event Type</option>
                     <option value="wedding">Wedding</option>
                     <option value="private">Private Event/Party</option>
                     <option value="corporate">Corporate Event</option>
@@ -170,6 +168,26 @@ function EnquireModal({ isOpen, onClose }) {
                   />
                 </div>
               </div>
+
+              {formData.eventType === 'wedding' && (
+                <div className="form-row">
+                  <div className="form-group">
+                    <label htmlFor="weddingPackage">Wedding Package *</label>
+                    <select
+                      id="weddingPackage"
+                      name="weddingPackage"
+                      value={formData.weddingPackage}
+                      onChange={handleChange}
+                      required
+                      disabled={isLoading}
+                    >
+                      <option value="full-night">Full Night</option>
+                      <option value="after-band">After Band</option>
+                      <option value="not-sure">Not Sure Yet</option>
+                    </select>
+                  </div>
+                </div>
+              )}
 
               <div className="form-row">
                 <div className="form-group">

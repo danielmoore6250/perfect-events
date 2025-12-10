@@ -1,0 +1,46 @@
+{
+  "reviews": [
+    {
+      "id": 1,
+      "name": "Sarah & James",
+      "event": "Wedding",
+      "text": "Perfect Events NI made our wedding day absolutely magical! The DJ kept our guests entertained all night long with the perfect mix of songs. Highly recommend!",
+      "rating": 5
+    },
+    {
+      "id": 2,
+      "name": "Michael O'Brien",
+      "event": "Corporate Event",
+      "text": "Professional, reliable, and incredibly talented. The team kept our corporate event running smoothly and the entertainment was top-notch. Will definitely book again!",
+      "rating": 5
+    },
+    {
+      "id": 3,
+      "name": "Emma & David",
+      "event": "Wedding",
+      "text": "From start to finish, everything was perfect. The sound system was crystal clear and they took requests throughout the night. Best decision we made for our reception!",
+      "rating": 5
+    },
+    {
+      "id": 4,
+      "name": "Lisa Thompson",
+      "event": "Birthday Party",
+      "text": "Amazing energy and great music selection! Everyone at my party was talking about how great the DJ was. Can't wait to book them for next year!",
+      "rating": 5
+    },
+    {
+      "id": 5,
+      "name": "Robert & Catherine",
+      "event": "Wedding",
+      "text": "Declan and the team were fantastic! They listened to what we wanted and delivered beyond our expectations. Our guests are still talking about it!",
+      "rating": 5
+    },
+    {
+      "id": 6,
+      "name": "John Patterson",
+      "event": "Private Event",
+      "text": "Professional service, great communication, and excellent entertainment. Highly recommended for anyone looking for quality event services in Northern Ireland.",
+      "rating": 5
+    }
+  ]
+}

@@ -145,31 +145,65 @@
 
 @media (max-width: 480px) {
   .review-carousel-container {
-    padding: 0.5rem;
+    padding: 1rem;
   }
 
   .review-swiper {
-    padding: 0 40px;
+    padding: 0 35px;
   }
 
   .review-card {
-    padding: 1rem;
-    min-height: 280px;
+    padding: 1.2rem;
+    min-height: 260px;
+    border-radius: 12px;
   }
 
   .review-card .stars {
-    font-size: 1.1rem;
+    font-size: 1rem;
+    margin-bottom: 0.8rem;
   }
 
   .review-card .review-text {
-    font-size: 0.85rem;
-    margin-bottom: 1rem;
+    font-size: 0.8rem;
+    margin-bottom: 0.8rem;
+    line-height: 1.5;
+  }
+
+  .review-card .review-author {
+    font-size: 0.95rem;
+    margin-bottom: 0.2rem;
+  }
+
+  .review-card .review-event {
+    font-size: 0.75rem;
   }
 
   .swiper-button-prev,
   .swiper-button-next {
-    width: 35px;
-    height: 35px;
-    font-size: 1rem;
+    width: 32px;
+    height: 32px;
+    font-size: 0.9rem;
+  }
+}
+
+@media (max-width: 320px) {
+  .review-carousel-container {
+    padding: 0.8rem;
+  }
+
+  .review-swiper {
+    padding: 0 30px;
+  }
+
+  .review-card {
+    padding: 1rem;
+    min-height: 240px;
+  }
+
+  .swiper-button-prev,
+  .swiper-button-next {
+    width: 28px;
+    height: 28px;
+    font-size: 0.8rem;
   }
 }

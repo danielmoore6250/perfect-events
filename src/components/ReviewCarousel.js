@@ -4,40 +4,11 @@ import { Navigation } from 'swiper/modules';
 import 'swiper/css';
 import 'swiper/css/navigation';
 import '../styles/ReviewCarousel.css';
+import reviewsData from '../data/reviews.json';
 
 function ReviewCarousel() {
   const swiperRef = useRef(null);
-
-  const reviews = [
-    {
-      id: 1,
-      stars: 5,
-      text: "Perfect Events NI absolutely made our wedding day unforgettable. The music selection was spot on, and the professionalism was impeccable. Highly recommended!",
-      author: "Sarah & James",
-      event: "Wedding, Belfast"
-    },
-    {
-      id: 2,
-      stars: 5,
-      text: "We hired Perfect Events NI for our corporate event and they were brilliant. No cheesy vibes, just sophisticated entertainment that impressed all our clients.",
-      author: "Michael O'Brien",
-      event: "Corporate Event, Dublin"
-    },
-    {
-      id: 3,
-      stars: 5,
-      text: "Our birthday party was incredible thanks to Perfect Events NI. They listened to what we wanted and delivered exactly that. Best decision ever!",
-      author: "Emma & Friends",
-      event: "Private Party, Belfast"
-    },
-    {
-      id: 4,
-      stars: 5,
-      text: "The PA system and engineering support for our event was top-notch. Professional, reliable, and the sound quality was exceptional. Will definitely book again!",
-      author: "David",
-      event: "Event, Cork"
-    }
-  ];
+  const reviews = reviewsData.reviews;
 
   return (
     <div className="review-carousel-container">
@@ -65,12 +36,12 @@ function ReviewCarousel() {
           <SwiperSlide key={review.id} className="review-slide">
             <div className="review-card">
               <div className="stars">
-                {[...Array(review.stars)].map((_, i) => (
+                {[...Array(review.rating)].map((_, i) => (
                   <span key={i}>⭐</span>
                 ))}
               </div>
               <p className="review-text">"{review.text}"</p>
-              <p className="review-author">— {review.author}</p>
+              <p className="review-author">— {review.name}</p>
               <p className="review-event">{review.event}</p>
             </div>
           </SwiperSlide>
