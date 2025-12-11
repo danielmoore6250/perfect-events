@@ -18,13 +18,21 @@ function EnquireModal({ isOpen, onClose, preSelectedEventType = '' }) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Update event type when preSelectedEventType changes
+  // Update event type when preSelectedEventType changes and reset on modal open
   useEffect(() => {
-    if (preSelectedEventType) {
-      setFormData(prev => ({
-        ...prev,
-        eventType: preSelectedEventType
-      }));
+    if (isOpen) {
+      // Reset submitted state when modal opens
+      setIsSubmitted(false);
+      setError('');
+      setIsLoading(false);
+      
+      // Update event type if pre-selected
+      if (preSelectedEventType) {
+        setFormData(prev => ({
+          ...prev,
+          eventType: preSelectedEventType
+        }));
+      }
     }
   }, [preSelectedEventType, isOpen]);
 
