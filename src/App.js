@@ -60,7 +60,7 @@ function App() {
             <li><button onClick={() => scrollToSection('home')} className="nav-link">Home</button></li>
             <li><button onClick={() => scrollToSection('services')} className="nav-link">Services</button></li>
             <li><button onClick={() => scrollToSection('about')} className="nav-link">About</button></li>
-            <li><button onClick={() => scrollToSection('reviews')} className="nav-link">Reviews</button></li>
+            <li><button onClick={() => scrollToSection('testimonials')} className="nav-link">Testimonials</button></li>
             <li><button onClick={() => scrollToSection('contact')} className="nav-link">Contact</button></li>
             <li><button onClick={openEnquire} className="nav-link enquire-btn">Enquire Now</button></li>
           </ul>
@@ -280,10 +280,10 @@ function App() {
         </div>
       </section>
 
-      {/* Reviews Section */}
-      <section id="reviews" className="reviews">
+      {/* Testimonials Section */}
+      <section id="testimonials" className="testimonials">
         <div className="container">
-          <h2 className="section-title">Client Reviews</h2>
+          <h2 className="section-title">Client Testimonials</h2>
           <ReviewCarousel />
         </div>
       </section>

@@ -785,8 +785,8 @@ body {
   color: var(--white);
 }
 
-/* ===== Reviews Section ===== */
-.reviews {
+/* ===== Testimonials Section ===== */
+.testimonials {
   padding: 80px 2rem;
   background: var(--black);
 }
@@ -1175,8 +1175,8 @@ body {
     line-height: 1.4;
   }
 
-  /* Reviews Section */
-  .reviews {
+  /* Testimonials Section */
+  .testimonials {
     padding: 3rem 1rem;
   }
 
