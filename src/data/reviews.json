@@ -2,44 +2,37 @@
   "reviews": [
     {
       "id": 1,
-      "name": "Sarah & James",
+      "name": "Ryan & Katy",
       "event": "Wedding",
-      "text": "Perfect Events NI made our wedding day absolutely magical! The DJ kept our guests entertained all night long with the perfect mix of songs. Highly recommend!",
+      "text": "Just wanted to thank the guys at Perfect Events for hosting our wedding! It was absolutely fantastic! The music catered for every single person in the room and it really did make our wedding party so enjoyable for all of our guests. Declan was brilliant on the mic and his knowledge of music really showed from the first song to the very last! Can't recommend these guys enough and will be getting them booked again for other family weddings.",
       "rating": 5
     },
     {
       "id": 2,
-      "name": "Michael O'Brien",
-      "event": "Corporate Event",
-      "text": "Professional, reliable, and incredibly talented. The team kept our corporate event running smoothly and the entertainment was top-notch. Will definitely book again!",
+      "name": "Judy and Andy",
+      "event": "Wedding",
+      "text": "Hey Deccy I just wanted to say a huge thank you for making our wedding something to remember. The music was amazing, the craic was next level and your stars in your eyes segment was the most I have laughed in ages especially my colleague Phil as Britney lol You were the perfect addition to our broadway wedding and we loved every single second of it. Thank you for an amazing night we wont forget.",
       "rating": 5
     },
     {
       "id": 3,
-      "name": "Emma & David",
+      "name": "Mr & Mrs McCambridge",
       "event": "Wedding",
-      "text": "From start to finish, everything was perfect. The sound system was crystal clear and they took requests throughout the night. Best decision we made for our reception!",
+      "text": "We had the pleasure of having Dan play at our wedding, and he was absolutely brilliant. From start to finish, he kept the dance floor packed and he knew exactly how to read the crowd. His music selection was spot on, and he seamlessly blended our requests with tunes that everybody loved. The energy he brought truly made the night unforgettable, and many of our guests commented on how fantastic he was. If you are looking for a DJ who will elevate your event and keep everyone dancing, we highly recommend Dan.",
       "rating": 5
     },
     {
       "id": 4,
-      "name": "Lisa Thompson",
-      "event": "Birthday Party",
-      "text": "Amazing energy and great music selection! Everyone at my party was talking about how great the DJ was. Can't wait to book them for next year!",
+      "name": "Mr & Mr Fitzpatrick",
+      "event": "Wedding",
+      "text": "Well Declan what can i say other than from the bottom of my heart thank you! You both made our wedding the most magical and beautiful experience from start to finish, there wasn't a moment that wasn't captured and catered for. You helped us create our dream night from the moment we entered the room, there wasn't a second the dance floor wasn't full. Trust me I have sore hips, heels and ankles to prove it lol Incredible thank you so much!",
       "rating": 5
     },
     {
       "id": 5,
-      "name": "Robert & Catherine",
-      "event": "Wedding",
-      "text": "Declan and the team were fantastic! They listened to what we wanted and delivered beyond our expectations. Our guests are still talking about it!",
-      "rating": 5
-    },
-    {
-      "id": 6,
-      "name": "John Patterson",
-      "event": "Private Event",
-      "text": "Professional service, great communication, and excellent entertainment. Highly recommended for anyone looking for quality event services in Northern Ireland.",
+      "name": "Mark",
+      "event": "Birthday Party",
+      "text": "Big thanks to Daniel for doing a brilliant job last night at our 70's & 80's themed birthday party. He did a great job getting plenty on the dance floor.",
       "rating": 5
     }
   ]
