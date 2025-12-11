@@ -243,29 +243,66 @@ exports.handler = async (event) => {
       `
     };
 
+    // Track email sending results
+    const results = {
+      businessEmailSent: false,
+      userEmailSent: false,
+      errors: []
+    };
+
     // Send business email
     try {
       await transporter.sendMail(businessMailOptions);
+      results.businessEmailSent = true;
       console.log('Business email sent successfully');
     } catch (err) {
-      console.error('Failed to send business email:', err.message);
+      console.error('Failed to send business email:', err.message, err);
+      results.errors.push(`Business email failed: ${err.message}`);
     }
 
     // Send user email with same transporter
     try {
       await transporter.sendMail(userMailOptions);
+      results.userEmailSent = true;
       console.log('User confirmation email sent successfully');
     } catch (err) {
-      console.error('Failed to send user email:', err.message);
+      console.error('Failed to send user email:', err.message, err);
+      results.errors.push(`User email failed: ${err.message}`);
     }
 
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ 
-        success: true, 
-        message: 'Enquiry sent successfully' 
-      })
-    };
+    // Log results for debugging
+    console.log('Email results:', JSON.stringify(results, null, 2));
+
+    // Determine response based on results
+    if (results.businessEmailSent && results.userEmailSent) {
+      return {
+        statusCode: 200,
+        body: JSON.stringify({ 
+          success: true, 
+          message: 'Enquiry sent successfully' 
+        })
+      };
+    } else if (results.businessEmailSent || results.userEmailSent) {
+      // Partial success - at least one email sent
+      console.warn('Partial email failure:', results);
+      return {
+        statusCode: 200,
+        body: JSON.stringify({ 
+          success: true, 
+          message: 'Enquiry received. There was a minor issue, but we have it on record.' 
+        })
+      };
+    } else {
+      // Both emails failed
+      console.error('Both emails failed to send');
+      return {
+        statusCode: 500,
+        body: JSON.stringify({ 
+          error: 'Failed to send enquiry',
+          details: 'Email service temporarily unavailable. Please try again or contact us directly.' 
+        })
+      };
+    }
   } catch (error) {
     console.error('Email send error:', error);
     return {
