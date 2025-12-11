@@ -353,11 +353,14 @@ body {
 .service-card-inner {
   position: relative;
   width: 100%;
-  transition: transform 0.6s;
+  transition: transform 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
   transform-style: preserve-3d;
   display: grid;
   grid-template-columns: 1fr;
   grid-template-rows: 1fr;
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 /* Only flip on click via class, no hover flip */
@@ -371,6 +374,7 @@ body {
   grid-row: 1;
   width: 100%;
   backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -434,15 +438,19 @@ body {
   border-radius: 20px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
   margin-top: 1rem;
   font-size: 0.9rem;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .more-info-btn:hover {
   background: var(--accent-color);
-  transform: translateY(-2px);
   box-shadow: 0 5px 15px rgba(255, 255, 255, 0.2);
+}
+
+.more-info-btn:active {
+  background: #e0e0e0;
 }
 
 .service-card-back h3 {
@@ -1116,6 +1124,11 @@ body {
   /* Disable hover flip on mobile, use click-based flip instead */
   .service-card-flip:hover .service-card-inner {
     transform: none;
+  }
+
+  /* Faster flip animation on mobile for responsiveness */
+  .service-card-inner {
+    transition: transform 0.35s cubic-bezier(0.68, -0.55, 0.265, 1.55);
   }
 
   .service-card-front,
