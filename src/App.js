@@ -1,23 +1,80 @@
 import './App.css';
 import { useState } from 'react';
 import EnquireModal from './components/EnquireModal';
+import ServiceDetailsModal from './components/ServiceDetailsModal';
 import ReviewCarousel from './components/ReviewCarousel';
 
 function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [flippedCards, setFlippedCards] = useState({});
   const [selectedEventType, setSelectedEventType] = useState('');
+  const [selectedService, setSelectedService] = useState(null);
 
-  const toggleCardFlip = (cardName) => {
-    setFlippedCards(prev => {
-      // If clicking the same card, toggle it. Otherwise, only flip the new card
-      if (prev[cardName]) {
-        return { [cardName]: false };
-      } else {
-        return { [cardName]: true };
-      }
-    });
+  const services = [
+    {
+      id: 'wedding',
+      title: 'Wedding DJ',
+      icon: '💍',
+      description: 'Create the perfect soundtrack for your big day. From ceremony to reception, we\'ll keep your guests dancing all night long.',
+      backTitle: 'Wedding Packages',
+      details: [
+        'Full night and after-band packages',
+        'Max 4.5 hour DJ set',
+        'Playing the music YOU want',
+        'Give us your favourite songs',
+        'Our knowledge + your music = amazing night',
+        'Don\'t like certain songs? We won\'t play it',
+        'Professional sound & lighting system'
+      ]
+    },
+    {
+      id: 'private',
+      title: 'Private Events',
+      icon: '🎉',
+      description: 'Birthday parties, anniversaries, and celebrations. We bring the energy and entertainment your guests will love.',
+      backTitle: 'Private Event Packages',
+      details: [
+        'Covering all private events from birthday parties and other celebrations',
+        'Max 4.5 hour DJ set',
+        'Professional sound & lighting system',
+        'Customisable playlist to tailor your event to the music you like'
+      ]
+    },
+    {
+      id: 'corporate',
+      title: 'Corporate Events',
+      icon: '🏢',
+      description: 'Professional entertainment for conferences, product launches, and company celebrations. We keep it professional and fun.',
+      backTitle: 'Corporate Packages',
+      details: [
+        'Let us take care of your corporate event',
+        'Radio Personality Declan Wilson to host',
+        'DJ included for post meal/awards entertainment',
+        'Professional sound system'
+      ]
+    },
+    {
+      id: 'pa-hire',
+      title: 'PA Hire & Engineering',
+      icon: '🔊',
+      description: 'Full sound system solutions with experienced engineers. Perfect for any venue size and event type.',
+      backTitle: 'PA Hire Packages',
+      details: [
+        'Need a sound system? We have you covered',
+        'Professional sound system with on-site engineer',
+        'Our team present as your sound engineer',
+        'System hire includes trained engineer',
+        'No system hire without our team present'
+      ]
+    }
+  ];
+
+  const openServiceDetails = (service) => {
+    setSelectedService(service);
+  };
+
+  const closeServiceDetails = () => {
+    setSelectedService(null);
   };
 
   const scrollToSection = (id) => {
@@ -106,109 +163,14 @@ function App() {
         <div className="container">
           <h2 className="section-title">Our Services</h2>
           <div className="services-grid">
-            {/* Wedding Service */}
-            <div className={`service-card-flip wedding ${flippedCards.wedding ? 'flipped' : ''}`}>
-              <div className="service-card-inner">
-                {/* Front */}
-                <div className="service-card-front">
-                  <div className="service-icon">💍</div>
-                  <h3>Wedding DJ</h3>
-                  <p>Create the perfect soundtrack for your big day. From ceremony to reception, we'll keep your guests dancing all night long.</p>
-                  <button onClick={() => toggleCardFlip('wedding')} className="more-info-btn">More Info</button>
-                </div>
-                {/* Back */}
-                <div className="service-card-back">
-                  <h3>Wedding Packages</h3>
-                  <ul className="package-details">
-                    <li>Full night and after-band packages</li>
-                    <li>Max 4.5 hour DJ set</li>
-                    <li>Playing the music YOU want</li>
-                    <li>Give us your favourite songs</li>
-                    <li>Our knowledge + your music = amazing night</li>
-                    <li>Don't like certain songs? We won't play it</li>
-                    <li>Professional sound & lighting system</li>
-                  </ul>
-                  <button onClick={(e) => { e.stopPropagation(); openEnquire('wedding'); }} className="enquire-btn-card">Enquire Now</button>
-                  <button onClick={() => toggleCardFlip('wedding')} className="close-btn-card">Close</button>
-                </div>
+            {services.map((service) => (
+              <div key={service.id} className="service-card">
+                <div className="service-card-icon">{service.icon}</div>
+                <h3>{service.title}</h3>
+                <p>{service.description}</p>
+                <button onClick={() => openServiceDetails(service)} className="more-info-btn">More Info</button>
               </div>
-            </div>
-
-            {/* Private Events */}
-            <div className={`service-card-flip private ${flippedCards.private ? 'flipped' : ''}`}>
-              <div className="service-card-inner">
-                {/* Front */}
-                <div className="service-card-front">
-                  <div className="service-icon">🎉</div>
-                  <h3>Private Events</h3>
-                  <p>Birthday parties, anniversaries, and celebrations. We bring the energy and entertainment your guests will love.</p>
-                  <button onClick={() => toggleCardFlip('private')} className="more-info-btn">More Info</button>
-                </div>
-                {/* Back */}
-                <div className="service-card-back">
-                  <h3>Private Event Packages</h3>
-                  <ul className="package-details">
-                    <li>Covering all private events from birthday parties and other celebrations</li>
-                    <li>Max 4.5 hour DJ set</li>
-                    <li>Professional sound & lighting system</li>
-                    <li>Customisable playlist to tailor your event to the music you like</li>
-                  </ul>
-                  <button onClick={(e) => { e.stopPropagation(); openEnquire('private'); }} className="enquire-btn-card">Enquire Now</button>
-                  <button onClick={() => toggleCardFlip('private')} className="close-btn-card">Close</button>
-                </div>
-              </div>
-            </div>
-
-            {/* Corporate Events */}
-            <div className={`service-card-flip corporate ${flippedCards.corporate ? 'flipped' : ''}`}>
-              <div className="service-card-inner">
-                {/* Front */}
-                <div className="service-card-front">
-                  <div className="service-icon">🏢</div>
-                  <h3>Corporate Events</h3>
-                  <p>Professional entertainment for conferences, product launches, and company celebrations. We keep it professional and fun.</p>
-                  <button onClick={() => toggleCardFlip('corporate')} className="more-info-btn">More Info</button>
-                </div>
-                {/* Back */}
-                <div className="service-card-back">
-                  <h3>Corporate Packages</h3>
-                  <ul className="package-details">
-                    <li>Let us take care of your corporate event</li>
-                    <li>Radio Personality Declan Wilson to host</li>
-                    <li>DJ included for post meal/awards entertainment</li>
-                    <li>Professional sound system</li>
-                  </ul>
-                  <button onClick={(e) => { e.stopPropagation(); openEnquire('corporate'); }} className="enquire-btn-card">Enquire Now</button>
-                  <button onClick={() => toggleCardFlip('corporate')} className="close-btn-card">Close</button>
-                </div>
-              </div>
-            </div>
-
-            {/* PA Hire */}
-            <div className={`service-card-flip pa ${flippedCards.pa ? 'flipped' : ''}`}>
-              <div className="service-card-inner">
-                {/* Front */}
-                <div className="service-card-front">
-                  <div className="service-icon">🔊</div>
-                  <h3>PA Hire & Engineering</h3>
-                  <p>Full sound system solutions with experienced engineers. Perfect for any venue size and event type.</p>
-                  <button onClick={() => toggleCardFlip('pa')} className="more-info-btn">More Info</button>
-                </div>
-                {/* Back */}
-                <div className="service-card-back">
-                  <h3>PA Hire Packages</h3>
-                  <ul className="package-details">
-                    <li>Need a sound system? We have you covered</li>
-                    <li>Professional sound system with on-site engineer</li>
-                    <li>Our team present as your sound engineer</li>
-                    <li>System hire includes trained engineer</li>
-                    <li>No system hire without our team present</li>
-                  </ul>
-                  <button onClick={(e) => { e.stopPropagation(); openEnquire('pa-hire'); }} className="enquire-btn-card">Enquire Now</button>
-                  <button onClick={() => toggleCardFlip('pa')} className="close-btn-card">Close</button>
-                </div>
-              </div>
-            </div>
+            ))}
           </div>
         </div>
       </section>
@@ -322,6 +284,14 @@ function App() {
 
       {/* Enquire Modal */}
       <EnquireModal isOpen={isModalOpen} onClose={closeEnquire} preSelectedEventType={selectedEventType} />
+      
+      {/* Service Details Modal */}
+      <ServiceDetailsModal 
+        isOpen={selectedService !== null} 
+        onClose={closeServiceDetails} 
+        service={selectedService}
+        onEnquire={openEnquire}
+      />
     </div>
   );
 }

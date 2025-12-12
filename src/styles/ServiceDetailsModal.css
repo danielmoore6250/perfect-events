@@ -1,0 +1,271 @@
+/* ===== Service Details Modal ===== */
+.service-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  padding: 1rem;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.service-modal-content {
+  background: #1a1a1a;
+  border-radius: 12px;
+  max-width: 600px;
+  width: 100%;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  position: relative;
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.service-modal-close {
+  position: absolute;
+  top: 1.5rem;
+  right: 1.5rem;
+  background: none;
+  border: none;
+  color: var(--text-light);
+  font-size: 2rem;
+  cursor: pointer;
+  padding: 0;
+  width: 2.5rem;
+  height: 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease;
+  z-index: 10;
+}
+
+.service-modal-close:hover {
+  color: var(--white);
+}
+
+.service-modal-header {
+  background: linear-gradient(135deg, #0d0d0d 0%, rgba(255, 255, 255, 0.05) 100%);
+  padding: 3rem 2rem 2rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  text-align: center;
+}
+
+.service-modal-icon {
+  font-size: 3.5rem;
+  margin-bottom: 1rem;
+}
+
+.service-modal-header h2 {
+  font-size: 1.8rem;
+  color: var(--white);
+  margin: 0;
+}
+
+.service-modal-body {
+  padding: 2rem;
+}
+
+.service-modal-body h3 {
+  font-size: 1.3rem;
+  color: var(--white);
+  margin-bottom: 1.5rem;
+}
+
+.package-details-modal {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.package-details-modal li {
+  color: var(--text-light);
+  margin-bottom: 0.8rem;
+  padding-left: 1.8rem;
+  position: relative;
+  line-height: 1.5;
+  font-size: 0.95rem;
+}
+
+.package-details-modal li:before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  color: var(--white);
+  font-weight: bold;
+  font-size: 1.1rem;
+}
+
+.service-modal-actions {
+  padding: 1.5rem 2rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  gap: 1rem;
+}
+
+.enquire-btn-modal {
+  flex: 1;
+  background: var(--white);
+  color: var(--black);
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 25px;
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 0.95rem;
+  transition: background-color 0.2s ease, transform 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.enquire-btn-modal:hover {
+  background: var(--accent-color);
+  transform: translateY(-2px);
+}
+
+.enquire-btn-modal:active {
+  transform: translateY(0);
+}
+
+.close-btn-modal {
+  flex: 1;
+  background: transparent;
+  color: var(--text-light);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  padding: 0.75rem 1.5rem;
+  border-radius: 25px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 0.95rem;
+  transition: all 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.close-btn-modal:hover {
+  color: var(--white);
+  border-color: var(--white);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Mobile Optimization */
+@media (max-width: 768px) {
+  .service-modal-content {
+    max-height: 90vh;
+    border-radius: 8px;
+  }
+
+  .service-modal-header {
+    padding: 2rem 1.5rem 1.5rem;
+  }
+
+  .service-modal-header h2 {
+    font-size: 1.4rem;
+  }
+
+  .service-modal-icon {
+    font-size: 3rem;
+    margin-bottom: 0.8rem;
+  }
+
+  .service-modal-body {
+    padding: 1.5rem;
+  }
+
+  .service-modal-body h3 {
+    font-size: 1.1rem;
+    margin-bottom: 1rem;
+  }
+
+  .package-details-modal li {
+    font-size: 0.85rem;
+    margin-bottom: 0.6rem;
+    padding-left: 1.5rem;
+  }
+
+  .service-modal-actions {
+    padding: 1rem 1.5rem;
+    flex-direction: column;
+  }
+
+  .enquire-btn-modal,
+  .close-btn-modal {
+    padding: 0.7rem 1.2rem;
+    font-size: 0.9rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .service-modal-overlay {
+    padding: 0.5rem;
+  }
+
+  .service-modal-close {
+    top: 1rem;
+    right: 1rem;
+    font-size: 1.8rem;
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .service-modal-header {
+    padding: 1.5rem 1.2rem 1.2rem;
+  }
+
+  .service-modal-header h2 {
+    font-size: 1.2rem;
+  }
+
+  .service-modal-icon {
+    font-size: 2.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .service-modal-body {
+    padding: 1.2rem;
+  }
+
+  .service-modal-body h3 {
+    font-size: 1rem;
+    margin-bottom: 0.8rem;
+  }
+
+  .package-details-modal li {
+    font-size: 0.8rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .service-modal-actions {
+    padding: 0.8rem 1.2rem;
+  }
+
+  .enquire-btn-modal,
+  .close-btn-modal {
+    padding: 0.6rem 1rem;
+    font-size: 0.85rem;
+  }
+}
