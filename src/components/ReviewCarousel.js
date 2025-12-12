@@ -35,11 +35,6 @@ function ReviewCarousel() {
         {reviews.map((review) => (
           <SwiperSlide key={review.id} className="review-slide">
             <div className="review-card">
-              <div className="stars">
-                {[...Array(review.rating)].map((_, i) => (
-                  <span key={i}>⭐</span>
-                ))}
-              </div>
               <p className="review-text">"{review.text}"</p>
               <p className="review-author">— {review.name}</p>
               <p className="review-event">{review.event}</p>
