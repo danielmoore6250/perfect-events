@@ -1,13 +1,30 @@
 const nodemailer = require('nodemailer');
-const fs = require('fs');
-const path = require('path');
+const { SESv2Client, SendEmailCommand } = require('@aws-sdk/client-sesv2');
 
-// Handler function for sending enquiries
+// Amazon SES v2 client — authenticates via the Lambda's IAM role (no passwords).
+const sesClient = new SESv2Client({ region: 'eu-west-1' });
+
+// Every email is sent from the business address on the SES-verified domain.
+const FROM = 'Perfect Events NI <enquiries@perfecteventsni.com>';
+
 exports.handler = async (event) => {
-  // Only allow POST requests
-  if (event.httpMethod !== 'POST') {
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Content-Type': 'application/json'
+  };
+
+  // Handle CORS preflight
+  if (event.requestContext?.http?.method === 'OPTIONS' || event.httpMethod === 'OPTIONS') {
+    return { statusCode: 200, headers, body: '' };
+  }
+
+  const method = event.requestContext?.http?.method || event.httpMethod;
+  if (method !== 'POST') {
     return {
       statusCode: 405,
+      headers,
       body: JSON.stringify({ error: 'Method not allowed' })
     };
   }
@@ -19,45 +36,23 @@ exports.handler = async (event) => {
     if (!formData.name || !formData.email || !formData.phone) {
       return {
         statusCode: 400,
+        headers,
         body: JSON.stringify({ error: 'Missing required fields' })
       };
     }
 
-    // Create transporter using environment variables (Office 365 via GoDaddy)
-    console.log('Creating transporter with:', {
-      host: 'smtp.office365.com',
-      port: 587,
-      user: process.env.EMAIL_USER
-    });
-    
+    // Send via Amazon SES (no SMTP, no passwords — uses the Lambda IAM role)
+    console.log('Sending via Amazon SES from:', FROM);
+
     const transporter = nodemailer.createTransport({
-      host: 'smtp.office365.com',
-      port: 587,
-      secure: false,
-      requireTLS: true,
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-      }
+      SES: { sesClient, SendEmailCommand }
     });
 
     console.log('Transporter created, attempting to send business email...');
 
-    // Get logo as base64 (for local testing)
-    let logoBase64 = '';
-    try {
-      const logoPath = path.join(__dirname, '../../public/perfect-events-logo.png');
-      if (fs.existsSync(logoPath)) {
-        const logoBuffer = fs.readFileSync(logoPath);
-        logoBase64 = logoBuffer.toString('base64');
-      }
-    } catch (err) {
-      console.log('Logo not found, continuing without it');
-    }
-
     // Email to business
     const businessMailOptions = {
-      from: process.env.EMAIL_USER,
+      from: FROM,
       to: 'enquiries@perfecteventsni.com',
       subject: `New Enquiry from ${formData.name} - ${formData.eventType}`,
       html: `
@@ -85,7 +80,6 @@ exports.handler = async (event) => {
           <body>
             <div class="container">
               <div class="header">
-                ${logoBase64 ? `<img src="data:image/png;base64,${logoBase64}" alt="Perfect Events NI" class="logo">` : ''}
                 <h1>🎵 New Event Enquiry</h1>
                 <p style="margin: 10px 0 0 0; opacity: 0.9;">Perfect Events NI</p>
               </div>
@@ -151,7 +145,7 @@ exports.handler = async (event) => {
 
     // Confirmation email to user
     const userMailOptions = {
-      from: process.env.EMAIL_USER,
+      from: FROM,
       to: formData.email,
       subject: 'We Received Your Enquiry - Perfect Events NI',
       html: `
@@ -181,7 +175,6 @@ exports.handler = async (event) => {
           <body>
             <div class="container">
               <div class="header">
-                ${logoBase64 ? `<img src="data:image/png;base64,${logoBase64}" alt="Perfect Events NI" class="logo">` : ''}
                 <h1>✓ Enquiry Received!</h1>
                 <p style="margin: 10px 0 0 0; opacity: 0.9;">Thank you for choosing Perfect Events NI</p>
               </div>
@@ -270,36 +263,35 @@ exports.handler = async (event) => {
       results.errors.push(`User email failed: ${err.message}`);
     }
 
-    // Log results for debugging
     console.log('Email results:', JSON.stringify(results, null, 2));
 
-    // Determine response based on results
     if (results.businessEmailSent && results.userEmailSent) {
       return {
         statusCode: 200,
-        body: JSON.stringify({ 
-          success: true, 
-          message: 'Enquiry sent successfully' 
+        headers,
+        body: JSON.stringify({
+          success: true,
+          message: 'Enquiry sent successfully'
         })
       };
     } else if (results.businessEmailSent || results.userEmailSent) {
-      // Partial success - at least one email sent
       console.warn('Partial email failure:', results);
       return {
         statusCode: 200,
-        body: JSON.stringify({ 
-          success: true, 
-          message: 'Enquiry received. There was a minor issue, but we have it on record.' 
+        headers,
+        body: JSON.stringify({
+          success: true,
+          message: 'Enquiry received. There was a minor issue, but we have it on record.'
         })
       };
     } else {
-      // Both emails failed
       console.error('Both emails failed to send');
       return {
         statusCode: 500,
-        body: JSON.stringify({ 
+        headers,
+        body: JSON.stringify({
           error: 'Failed to send enquiry',
-          details: 'Email service temporarily unavailable. Please try again or contact us directly.' 
+          details: 'Email service temporarily unavailable. Please try again or contact us directly.'
         })
       };
     }
@@ -307,9 +299,10 @@ exports.handler = async (event) => {
     console.error('Email send error:', error);
     return {
       statusCode: 500,
-      body: JSON.stringify({ 
+      headers,
+      body: JSON.stringify({
         error: 'Failed to send enquiry',
-        details: error.message 
+        details: error.message
       })
     };
   }

@@ -22,5 +22,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Local Netlify folder
-.netlify
+
+# Lambda build artifacts
+aws/lambda/**/function.zip
+aws/lambda/*.zip
+
+# node_modules at any depth (e.g. aws/lambda/*/node_modules)
+node_modules/
