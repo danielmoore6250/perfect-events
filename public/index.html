@@ -4,17 +4,79 @@
     <meta charset="utf-8" />
     <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#0d0d0d" />
+    <meta name="theme-color" content="#0A0A0B" />
     <meta
       name="description"
-      content="Perfect Events NI - Professional DJ Services for Weddings, Private Events, Corporate Events, and PA Hire"
+      content="Wedding & event DJ hire in Belfast and across Northern Ireland & Ireland. Professional DJs for weddings, private parties, corporate events and PA hire. Get a quick quote from Perfect Events NI."
     />
+    <link rel="canonical" href="https://perfecteventsni.com/" />
+    <meta property="og:title" content="Perfect Events NI — Professional DJ Services" />
+    <meta property="og:description" content="Award-winning DJ and event entertainment across Ireland. Weddings, private parties, corporate events and PA hire." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://perfecteventsni.com" />
+    <meta property="og:image" content="%PUBLIC_URL%/perfect_events_logo.png" />
+    <meta property="og:site_name" content="Perfect Events NI" />
+    <meta property="og:locale" content="en_GB" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <!-- Structured data: local DJ business (helps Google understand who/where/what) -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": ["LocalBusiness", "EntertainmentBusiness"],
+        "name": "Perfect Events NI",
+        "description": "Professional wedding and event DJ hire serving Belfast, Northern Ireland and all of Ireland. Weddings, private parties, corporate events and PA hire.",
+        "url": "https://perfecteventsni.com/",
+        "image": "https://perfecteventsni.com/perfect_events_logo.png",
+        "logo": "https://perfecteventsni.com/perfect_events_logo.png",
+        "email": "enquiries@perfecteventsni.com",
+        "priceRange": "££",
+        "address": {
+          "@type": "PostalAddress",
+          "addressLocality": "Belfast",
+          "addressRegion": "Northern Ireland",
+          "addressCountry": "GB"
+        },
+        "areaServed": [
+          { "@type": "City", "name": "Belfast" },
+          { "@type": "AdministrativeArea", "name": "Northern Ireland" },
+          { "@type": "Country", "name": "Ireland" }
+        ],
+        "knowsAbout": ["Wedding DJ", "Party DJ", "Corporate event DJ", "PA hire", "Event entertainment"],
+        "hasOfferCatalog": {
+          "@type": "OfferCatalog",
+          "name": "DJ & event services",
+          "itemListElement": [
+            { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Wedding DJ", "areaServed": "Ireland" } },
+            { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Private Event DJ", "areaServed": "Ireland" } },
+            { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Corporate Event DJ", "areaServed": "Ireland" } },
+            { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "PA Hire & Engineering", "areaServed": "Ireland" } }
+          ]
+        }
+      }
+    </script>
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/favicon.ico" />
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
-    <title>Perfect Events NI - Professional DJ Services</title>
+
+    <!-- Typography: Bricolage Grotesque (display), Instrument Sans (body), JetBrains Mono (labels) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <title>Wedding &amp; Event DJ Belfast | DJ Hire Northern Ireland | Perfect Events NI</title>
   </head>
   <body>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <noscript>
+      <h1>Perfect Events NI — Wedding &amp; Event DJ Hire in Belfast &amp; across Ireland</h1>
+      <p>
+        Perfect Events NI provides professional DJ hire and event entertainment for weddings,
+        private parties, corporate events and PA hire across Belfast, Northern Ireland and all of
+        Ireland. No cheesy content — just the soundtrack your night deserves.
+      </p>
+      <p>Email <a href="mailto:enquiries@perfecteventsni.com">enquiries@perfecteventsni.com</a> for a quote.</p>
+    </noscript>
     <div id="root"></div>
   </body>
 </html>
