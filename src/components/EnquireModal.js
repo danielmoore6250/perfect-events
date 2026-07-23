@@ -50,8 +50,8 @@ function EnquireModal({ isOpen, onClose, preSelectedEventType = '' }) {
     setError('');
 
     try {
-      // Send form data to Netlify function
-      const response = await fetch('/.netlify/functions/send-enquiry', {
+      // Send form data to AWS Lambda via API Gateway
+      const response = await fetch('https://xczjqb3x9i.execute-api.eu-west-1.amazonaws.com/send-enquiry', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
