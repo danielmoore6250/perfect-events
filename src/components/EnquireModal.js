@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import '../styles/EnquireModal.css';
+import { API_BASE } from '../config';
 
 function EnquireModal({ isOpen, onClose, preSelectedEventType = '' }) {
   const [formData, setFormData] = useState({
@@ -51,7 +52,7 @@ function EnquireModal({ isOpen, onClose, preSelectedEventType = '' }) {
 
     try {
       // Send form data to AWS Lambda via API Gateway
-      const response = await fetch('https://xczjqb3x9i.execute-api.eu-west-1.amazonaws.com/send-enquiry', {
+      const response = await fetch(`${API_BASE}/send-enquiry`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

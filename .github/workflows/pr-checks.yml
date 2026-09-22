@@ -26,6 +26,7 @@ jobs:
             package-lock.json
             infra/package-lock.json
             aws/lambda/send-enquiry/package-lock.json
+            aws/lambda/admin-bookings/package-lock.json
 
       - name: Install site dependencies
         run: npm ci
@@ -34,10 +35,24 @@ jobs:
         working-directory: aws/lambda/send-enquiry
         run: npm ci
 
+      - name: Test React admin screen
+        # Only src/admin has tests: CRA's jest cannot resolve Swiper's subpath
+        # exports, so anything that imports the public site cannot be tested here.
+        env:
+          CI: true
+        run: npm test -- --watchAll=false
+
       - name: Test enquiry Lambda
-        # Node's built-in test runner; SES and DynamoDB are stubbed. There are no
-        # React tests: CRA's jest cannot resolve Swiper's subpath exports.
+        # Node's built-in test runner; SES and DynamoDB are stubbed.
         working-directory: aws/lambda/send-enquiry
+        run: npm test
+
+      - name: Install admin Lambda dependencies
+        working-directory: aws/lambda/admin-bookings
+        run: npm ci
+
+      - name: Test admin Lambda
+        working-directory: aws/lambda/admin-bookings
         run: npm test
 
       - name: Build React app
