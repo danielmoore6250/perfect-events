@@ -1,0 +1,61 @@
+name: PR Checks
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  checks:
+    name: Test, build and synth
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            infra/package-lock.json
+            aws/lambda/send-enquiry/package-lock.json
+
+      - name: Install site dependencies
+        run: npm ci
+
+      - name: Install enquiry Lambda dependencies
+        working-directory: aws/lambda/send-enquiry
+        run: npm ci
+
+      - name: Test enquiry Lambda
+        # Node's built-in test runner; SES and DynamoDB are stubbed. There are no
+        # React tests: CRA's jest cannot resolve Swiper's subpath exports.
+        working-directory: aws/lambda/send-enquiry
+        run: npm test
+
+      - name: Build React app
+        env:
+          CI: true
+        run: npm run build
+
+      - name: Install CDK dependencies
+        working-directory: infra
+        run: npm ci
+
+      - name: Type check infra
+        working-directory: infra
+        run: npx tsc --noEmit -p tsconfig.json
+
+      - name: CDK synth
+        # No AWS credentials needed: the stack synthesises environment-agnostic
+        # when CDK_DEFAULT_ACCOUNT/REGION are unset, so this validates the
+        # template (and the Lambda bundling) on every pull request.
+        working-directory: infra
+        run: npx cdk synth --quiet

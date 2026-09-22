@@ -4,6 +4,7 @@ import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as apigatewayv2 from 'aws-cdk-lib/aws-apigatewayv2';
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
@@ -69,6 +70,26 @@ export class InfraStack extends cdk.Stack {
       ],
     });
 
+    // DynamoDB table holding one record per enquiry/booking.
+    // RETAIN so booking history survives a stack delete; on-demand billing keeps
+    // the cost proportional to the handful of enquiries that actually arrive.
+    const bookingsTable = new dynamodb.Table(this, 'BookingsTable', {
+      tableName: 'perfect-events-bookings',
+      partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
+    });
+
+    // Lets the admin screen list every booking in event-date order without a
+    // full table scan: every record carries recordType = 'booking'.
+    bookingsTable.addGlobalSecondaryIndex({
+      indexName: 'ByEventDate',
+      partitionKey: { name: 'recordType', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'eventDate', type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
     // Lambda function for sending enquiries
     const lambdaDir = path.join(__dirname, '../../aws/lambda/send-enquiry');
 
@@ -90,6 +111,9 @@ export class InfraStack extends cdk.Stack {
       }),
       timeout: cdk.Duration.seconds(30),
       memorySize: 128,
+      environment: {
+        BOOKINGS_TABLE: bookingsTable.tableName,
+      },
       // Email is sent via Amazon SES using this Lambda's IAM role — no credentials needed.
     });
 
@@ -97,6 +121,12 @@ export class InfraStack extends cdk.Stack {
     sendEnquiryFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['ses:SendEmail', 'ses:SendRawEmail'],
       resources: ['*'],
+    }));
+
+    // The enquiry Lambda only ever creates records — no read, update or delete.
+    sendEnquiryFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['dynamodb:PutItem'],
+      resources: [bookingsTable.tableArn],
     }));
 
     // HTTP API Gateway
@@ -134,6 +164,10 @@ export class InfraStack extends cdk.Stack {
 
     new cdk.CfnOutput(this, 'CloudFrontDistributionId', {
       value: distribution.distributionId,
+    });
+
+    new cdk.CfnOutput(this, 'BookingsTableName', {
+      value: bookingsTable.tableName,
     });
 
     new cdk.CfnOutput(this, 'ApiEndpoint', {
