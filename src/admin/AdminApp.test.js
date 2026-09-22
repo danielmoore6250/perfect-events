@@ -56,8 +56,11 @@ beforeEach(() => {
     }
 
     if (url.startsWith('https://cognito-idp.')) {
-      const target = init.headers['X-Amz-Target'];
-      if (target.endsWith('InitiateAuth')) {
+      const target = init.headers['X-Amz-Target'].split('.').pop();
+      if (target === 'InitiateAuth' && body.AuthFlow === 'REFRESH_TOKEN_AUTH') {
+        throw new TypeError('Failed to fetch');
+      }
+      if (target === 'InitiateAuth') {
         if (body.AuthParameters.PASSWORD === 'wrong') {
           return jsonResponse(400, { __type: 'NotAuthorizedException', message: 'Incorrect username or password.' });
         }
@@ -66,9 +69,19 @@ beforeEach(() => {
         }
         return jsonResponse(200, { AuthenticationResult: { IdToken: 'id-token', RefreshToken: 'refresh', ExpiresIn: 3600 } });
       }
-      if (target.endsWith('RespondToAuthChallenge')) {
+      if (target === 'RespondToAuthChallenge') {
         return jsonResponse(200, { AuthenticationResult: { IdToken: 'id-token-2', RefreshToken: 'refresh', ExpiresIn: 3600 } });
       }
+      if (target === 'ForgotPassword') {
+        return jsonResponse(200, { CodeDeliveryDetails: { Destination: 'a***@e***', DeliveryMedium: 'EMAIL' } });
+      }
+      if (target === 'ConfirmForgotPassword') {
+        if (body.ConfirmationCode !== '123456') {
+          return jsonResponse(400, { __type: 'CodeMismatchException', message: 'Invalid verification code provided' });
+        }
+        return jsonResponse(200, {});
+      }
+
     }
 
     if (url.startsWith(`${API_BASE}/admin/bookings`)) {
@@ -84,7 +97,11 @@ beforeEach(() => {
       }
       if (method === 'PATCH') {
         const current = store[id];
-        const next = { ...current, ...body, updatedAt: '2026-09-23T09:00:00.000Z' };
+        const { expectedUpdatedAt, ...fields } = body;
+        if (expectedUpdatedAt !== current.updatedAt) {
+          return jsonResponse(409, { error: 'Booking changed since it was loaded. Reload and try again.' });
+        }
+        const next = { ...current, ...fields, updatedAt: '2026-09-23T09:00:00.000Z' };
         if (body.status && body.status !== current.status) {
           next.statusHistory = [...current.statusHistory, { status: body.status, at: '2026-09-23T09:00:00.000Z', by: 'admin@example.com' }];
         }
@@ -162,13 +179,71 @@ test('opens a booking, saves only the changed fields, and shows the new history 
   expect(patch.url).toBe(`${API_BASE}/admin/bookings/${booking.id}`);
   expect(patch.body).toEqual({
     status: 'quoted',
-    pricing: { quote: '1250', deposit: '250', depositPaidOn: null, balancePaidOn: null }
+    pricing: { quote: '1250', deposit: '250', depositPaidOn: null, balancePaidOn: null },
+    expectedUpdatedAt: booking.updatedAt
   });
 
   const history = screen.getByRole('list');
   expect(within(history).getAllByRole('listitem')).toHaveLength(2);
   expect(within(history).getByText('admin@example.com', { exact: false })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+
+  // The row's name is a real link, so keyboard and assistive tech get native semantics.
+  fireEvent.click(screen.getByRole('button', { name: '← All bookings' }));
+  expect(await screen.findByRole('link', { name: 'Aoife Murphy' })).toHaveAttribute('href', `/admin/${booking.id}`);
+});
+
+test('a stale save is reported and the record can be reloaded', async () => {
+  render(<AdminApp />);
+  await signIn();
+  fireEvent.click(await screen.findByText('Aoife Murphy'));
+  await screen.findByRole('heading', { name: 'Aoife Murphy' });
+
+  // Someone else saves in the meantime.
+  store[booking.id] = { ...store[booking.id], notes: 'from another tab', updatedAt: '2026-09-23T08:00:00.000Z' };
+
+  fireEvent.change(screen.getByLabelText('Stage'), { target: { value: 'quoted' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('changed since it was loaded');
+  expect(store[booking.id].status).toBe('enquiry');
+});
+
+test('forgot password emails a code, rejects a wrong code, then signs in with the new password', async () => {
+  render(<AdminApp />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Forgot password?' }));
+
+  expect(screen.getByRole('heading', { name: 'Reset your password' })).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'admin@example.com' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Email me a reset code' }));
+
+  expect(await screen.findByRole('heading', { name: 'Enter the reset code' })).toBeInTheDocument();
+  expect(screen.getByText(/a reset code is on its way/)).toBeInTheDocument();
+
+  fireEvent.change(screen.getByLabelText('Reset code'), { target: { value: '000000' } });
+  fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'Reset-Pass-Word-1' } });
+  fireEvent.change(screen.getByLabelText('Confirm new password'), { target: { value: 'Reset-Pass-Word-1' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Set password and sign in' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('That code is not right');
+
+  fireEvent.change(screen.getByLabelText('Reset code'), { target: { value: '123456' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Set password and sign in' }));
+
+  expect(await screen.findByText('Aoife Murphy')).toBeInTheDocument();
+  const confirm = requests.find((r) => r.headers['X-Amz-Target']?.endsWith('ConfirmForgotPassword') && r.body.ConfirmationCode === '123456');
+  expect(confirm.body.Password).toBe('Reset-Pass-Word-1');
+});
+
+test('a refresh that fails on the network keeps the session and reports the problem', async () => {
+  localStorage.setItem(
+    'pe-admin-session',
+    JSON.stringify({ email: 'admin@example.com', idToken: 'expired', refreshToken: 'refresh', expiresAt: Date.now() - 1000 })
+  );
+  render(<AdminApp />);
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('Could not refresh your session');
+  expect(screen.queryByRole('heading', { name: 'Admin sign in' })).not.toBeInTheDocument();
+  expect(JSON.parse(localStorage.getItem('pe-admin-session')).refreshToken).toBe('refresh');
 });
 
 test('a temporary password leads to the new-password step and then into the app', async () => {

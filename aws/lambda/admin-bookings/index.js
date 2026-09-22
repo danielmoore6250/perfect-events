@@ -60,25 +60,40 @@ class HttpError extends Error {
   }
 }
 
-const isIsoDate = (value) =>
-  typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value));
+// Strict YYYY-MM-DD: Date.parse would happily turn 2027-02-30 into 2 March, so
+// the components are checked against what the Date actually resolved to.
+const isIsoDate = (value) => {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+};
 
 // ---- Validation -----------------------------------------------------------
 
 // Turns a request body into the set of fields that may change. Anything not
 // recognised is an error rather than silently dropped, so a typo in the client
-// never looks like a successful save.
+// never looks like a successful save. `expectedUpdatedAt` is not a change: it is
+// the version the caller edited, used to refuse a save over someone else's.
 const parseUpdate = (body) => {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     throw new HttpError(400, 'Body must be a JSON object');
   }
 
   const changes = {};
+  let expectedUpdatedAt = null;
 
   for (const key of Object.keys(body)) {
     const value = body[key];
 
     switch (key) {
+      case 'expectedUpdatedAt':
+        if (typeof value !== 'string' || Number.isNaN(Date.parse(value))) {
+          throw new HttpError(400, 'expectedUpdatedAt must be an ISO-8601 timestamp');
+        }
+        expectedUpdatedAt = value;
+        break;
+
       case 'status':
         if (!STATUSES.includes(value)) {
           throw new HttpError(400, `status must be one of: ${STATUSES.join(', ')}`);
@@ -116,7 +131,7 @@ const parseUpdate = (body) => {
     throw new HttpError(400, 'Nothing to update');
   }
 
-  return changes;
+  return { changes, expectedUpdatedAt };
 };
 
 const parsePricing = (pricing) => {
@@ -134,7 +149,8 @@ const parsePricing = (pricing) => {
     if (value === null || value === '') {
       clean[key] = null;
     } else if (MONEY_FIELDS.has(key)) {
-      const amount = typeof value === 'number' ? value : Number(String(value).replace(/[£,\s]/g, ''));
+      const text = typeof value === 'number' ? String(value) : String(value).replace(/[£,\s]/g, '');
+      const amount = text === '' ? NaN : Number(text);
       if (!Number.isFinite(amount) || amount < 0) {
         throw new HttpError(400, `pricing.${key} must be a non-negative amount`);
       }
@@ -184,12 +200,15 @@ const getBooking = async (id) => {
   return Item;
 };
 
-const updateBooking = async (id, changes, actor) => {
+// `expectedUpdatedAt` is the version the caller loaded. If it is omitted the
+// version this request just read is used instead, which still stops two
+// simultaneous saves but cannot catch a tab that loaded the record long ago.
+const updateBooking = async (id, changes, actor, expectedUpdatedAt) => {
   const current = await getBooking(id);
   const now = new Date().toISOString();
 
   const names = { '#updatedAt': 'updatedAt' };
-  const values = { ':updatedAt': now, ':currentStatus': current.status };
+  const values = { ':updatedAt': now, ':expectedUpdatedAt': expectedUpdatedAt || current.updatedAt };
   const sets = ['#updatedAt = :updatedAt'];
 
   const statusChanged = changes.status !== undefined && changes.status !== current.status;
@@ -212,17 +231,15 @@ const updateBooking = async (id, changes, actor) => {
     }
   }
 
-  names['#currentStatus'] = 'status';
-
   try {
     const { Attributes } = await docClient.send(
       new UpdateCommand({
         TableName: BOOKINGS_TABLE,
         Key: { id },
         UpdateExpression: `SET ${sets.join(', ')}`,
-        // The status guard makes a stale save fail rather than silently
-        // overwriting a change made from another tab.
-        ConditionExpression: 'attribute_exists(id) AND #currentStatus = :currentStatus',
+        // A stale save fails rather than silently overwriting a change made
+        // from another tab: the record must still be the version the caller saw.
+        ConditionExpression: 'attribute_exists(id) AND #updatedAt = :expectedUpdatedAt',
         ExpressionAttributeNames: names,
         ExpressionAttributeValues: values,
         ReturnValues: 'ALL_NEW'
@@ -282,8 +299,8 @@ exports.handler = async (event) => {
         return respond(200, { booking: await getBooking(id) });
       }
       if (method === 'PATCH') {
-        const changes = parseUpdate(parseBody(event));
-        const booking = await updateBooking(id, changes, actorFrom(event));
+        const { changes, expectedUpdatedAt } = parseUpdate(parseBody(event));
+        const booking = await updateBooking(id, changes, actorFrom(event), expectedUpdatedAt);
         return respond(200, { booking });
       }
     }

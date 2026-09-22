@@ -120,8 +120,9 @@ validation, escaping, date handling, the write-before-email order, and every
 degraded path (write fails, table unset, either email fails, both fail).
 
 `src/admin/AdminApp.test.js` (`CI=true npm test -- --watchAll=false`) walks the
-admin screen against a mocked `fetch`: both sign-in paths, list filters, detail,
-a save that sends only changed fields, session expiry and sign-out. It works
+admin screen against a mocked `fetch`: sign-in, first-login password, forgot
+password, list filters, detail, a save that sends only changed fields, a stale
+save, a refresh that fails on the network, session expiry and sign-out. It works
 because the admin screen never imports the public site: CRA's jest cannot
 resolve Swiper's subpath exports (`transformIgnorePatterns` does not fix it — it
 is a resolver issue, not a transform one), so nothing that imports `App.js` can
@@ -161,7 +162,11 @@ Branch `bookings-phase-2`. Phase 1 was deployed and verified on 2026-09-22.
 - App client `perfect-events-admin-web`: no secret, `USER_PASSWORD_AUTH` only, 1h
   tokens, 30-day refresh. The React screen calls Cognito's JSON API directly with
   `fetch` (`src/admin/auth.js`), so no auth SDK is in the bundle. Session lives in
-  `localStorage` and refreshes itself.
+  `localStorage` and refreshes itself; a refresh that fails on the network keeps
+  the session and shows an error, only a rejected token signs the admin out.
+- "Forgot password?" on the sign-in screen uses Cognito's `ForgotPassword` and
+  `ConfirmForgotPassword`: a code is emailed to the admin address, then a new
+  password is set and the screen signs in with it.
 - `HttpUserPoolAuthorizer` on the bookings routes: API Gateway rejects a bad or
   missing token before the Lambda runs. The Lambda takes the actor's email from
   the JWT claims for `statusHistory`.
@@ -175,16 +180,19 @@ Branch `bookings-phase-2`. Phase 1 was deployed and verified on 2026-09-22.
 | `GET /admin/bookings/{id}` | JWT | One record |
 | `PATCH /admin/bookings/{id}` | JWT | Update `status`, `eventDate`, `pricing`, `notes` |
 
-`PATCH` validates every field and rejects unknown ones. A status change appends
-`{status, at, by}` to `statusHistory`; sending the same status does not. The
-update is conditional on the status the Lambda just read, so two tabs cannot
-silently overwrite each other (the loser gets a 409). Lambda IAM is `GetItem` and
-`UpdateItem` on the table plus `Query` on the index — no delete, no scan.
+`PATCH` validates every field and rejects unknown ones. Dates are checked as
+real calendar dates (`2027-02-30` is refused, `Date.parse` alone would accept it).
+A status change appends `{status, at, by}` to `statusHistory`; sending the same
+status does not. The body may carry `expectedUpdatedAt`, the `updatedAt` the
+caller loaded; the update is conditional on it, so a tab that loaded the record
+before someone else saved gets a 409 instead of overwriting them. The screen
+always sends it. Lambda IAM is `GetItem` and `UpdateItem` on the table plus
+`Query` on the index — no delete, no scan.
 
 `pricing` is always the full shape `{ quote, deposit, depositPaidOn,
 balancePaidOn }` with `null` for unset values; balance is derived in the UI.
 
-Tests: `npm test` in the Lambda directory, 19 cases, run in PR checks.
+Tests: `npm test` in the Lambda directory, 22 cases, run in PR checks.
 
 ### Screen — `src/admin/`
 

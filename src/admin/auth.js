@@ -45,7 +45,11 @@ const friendlyMessage = (data) => {
     case 'InvalidPasswordException':
       return data.message || 'That password does not meet the requirements.';
     case 'PasswordResetRequiredException':
-      return 'A password reset is required. Use "Forgot password" in the Cognito console.';
+      return 'Your password needs to be reset. Use "Forgot password?" below.';
+    case 'CodeMismatchException':
+      return 'That code is not right. Check the email and try again.';
+    case 'ExpiredCodeException':
+      return 'That code has expired. Request a new one.';
     case 'TooManyRequestsException':
     case 'LimitExceededException':
       return 'Too many attempts. Wait a minute and try again.';
@@ -125,6 +129,34 @@ export const completeNewPassword = async (email, newPassword, cognitoSession) =>
   return saveSession(data.AuthenticationResult, email);
 };
 
+// Emails a reset code to the admin address. Cognito replies the same way
+// whether or not the user exists, so nothing leaks.
+export const forgotPassword = async (email) => {
+  const { clientId } = await loadConfig();
+  await cognitoCall('ForgotPassword', { ClientId: clientId, Username: email });
+};
+
+export const confirmForgotPassword = async (email, code, newPassword) => {
+  const { clientId } = await loadConfig();
+  await cognitoCall('ConfirmForgotPassword', {
+    ClientId: clientId,
+    Username: email,
+    ConfirmationCode: code.trim(),
+    Password: newPassword
+  });
+};
+
+// Cognito errors that mean the refresh token itself is no good, as opposed to
+// a network blip or a throttled request that will succeed on retry.
+const AUTH_FAILURE_CODES = new Set([
+  'NotAuthorizedException',
+  'UserNotFoundException',
+  'PasswordResetRequiredException',
+  'UserNotConfirmedException',
+  'ResourceNotFoundException'
+]);
+const isAuthFailure = (err) => AUTH_FAILURE_CODES.has(String(err?.code || '').split('#').pop());
+
 const refreshSession = async (session) => {
   const { clientId } = await loadConfig();
   const data = await cognitoCall('InitiateAuth', {
@@ -137,6 +169,9 @@ const refreshSession = async (session) => {
 
 // A token that is valid for at least another minute, refreshing if needed.
 // Returns null when there is no usable session, so the caller shows the login.
+// A refresh that fails for a reason other than the token being rejected keeps
+// the session and throws, so the screen can report the outage instead of
+// forcing a fresh sign-in.
 export const getIdToken = async () => {
   const session = getSession();
   if (!session) return null;
@@ -147,8 +182,11 @@ export const getIdToken = async () => {
   }
   try {
     return (await refreshSession(session)).idToken;
-  } catch {
-    clearSession();
-    return null;
+  } catch (err) {
+    if (isAuthFailure(err)) {
+      clearSession();
+      return null;
+    }
+    throw new Error('Could not refresh your session. Check your connection and try again.');
   }
 };

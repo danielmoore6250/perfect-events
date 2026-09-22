@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import '../styles/Admin.css';
-import { getSession, signIn, completeNewPassword, clearSession } from './auth';
+import { getSession, signIn, completeNewPassword, forgotPassword, confirmForgotPassword, clearSession } from './auth';
 import { listBookings, getBooking, updateBooking } from './api';
 
 const STATUSES = [
@@ -31,7 +31,13 @@ const WEDDING_PACKAGE_LABELS = {
 };
 const labelFor = (labels, value, fallback = 'Not specified') => (value ? labels[value] || value : fallback);
 
-const todayIso = () => new Date().toISOString().slice(0, 10);
+// Today in the admin's own timezone: toISOString() would give UTC, which is
+// yesterday for an hour every night during British Summer Time.
+const todayIso = () => {
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+};
 
 const formatEventDate = (iso, { long = false } = {}) => {
   if (!iso || iso === 'unknown') return 'Date TBC';
@@ -86,77 +92,141 @@ const useAdminRoute = () => {
 // ---- Screens ---------------------------------------------------------------
 
 function Login({ onSignedIn }) {
+  // 'signin' | 'new-password' (first login) | 'forgot' (request code) | 'reset' (enter code)
+  const [mode, setMode] = useState('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [code, setCode] = useState('');
   const [cognitoSession, setCognitoSession] = useState(null);
   const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const needsNewPassword = Boolean(cognitoSession);
+  const switchMode = (next) => {
+    setMode(next);
+    setError('');
+    setInfo('');
+    setPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setCode('');
+  };
 
   const submit = async (e) => {
     e.preventDefault();
     setError('');
     setBusy(true);
+    const address = email.trim();
     try {
-      if (needsNewPassword) {
+      if (mode === 'new-password' || mode === 'reset') {
         if (newPassword !== confirmPassword) throw new Error('The new passwords do not match.');
-        onSignedIn(await completeNewPassword(email.trim(), newPassword, cognitoSession));
-        return;
       }
-      const result = await signIn(email.trim(), password);
-      if (result.challenge === 'NEW_PASSWORD_REQUIRED') {
-        setCognitoSession(result.cognitoSession);
-      } else {
+
+      if (mode === 'new-password') {
+        onSignedIn(await completeNewPassword(address, newPassword, cognitoSession));
+      } else if (mode === 'forgot') {
+        await forgotPassword(address);
+        switchMode('reset');
+        setInfo(`If ${address} is the admin address, a reset code is on its way.`);
+      } else if (mode === 'reset') {
+        await confirmForgotPassword(address, code, newPassword);
+        const result = await signIn(address, newPassword);
         onSignedIn(result.session);
+      } else {
+        const result = await signIn(address, password);
+        if (result.challenge === 'NEW_PASSWORD_REQUIRED') {
+          setCognitoSession(result.cognitoSession);
+          switchMode('new-password');
+        } else {
+          onSignedIn(result.session);
+        }
       }
     } catch (err) {
-      setError(err.message || 'Sign-in failed.');
+      setError(err.message || 'Something went wrong.');
     } finally {
       setBusy(false);
     }
   };
 
+  const titles = {
+    signin: 'Admin sign in',
+    'new-password': 'Choose a password',
+    forgot: 'Reset your password',
+    reset: 'Enter the reset code'
+  };
+  const actions = {
+    signin: 'Sign in',
+    'new-password': 'Set password and sign in',
+    forgot: 'Email me a reset code',
+    reset: 'Set password and sign in'
+  };
+
+  const passwordFields = (
+    <>
+      <label className="field">
+        <span>New password</span>
+        <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} autoComplete="new-password" required autoFocus={mode === 'new-password'} />
+      </label>
+      <label className="field">
+        <span>Confirm new password</span>
+        <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} autoComplete="new-password" required />
+      </label>
+    </>
+  );
+
   return (
     <div className="admin admin--centered">
       <form className="login" onSubmit={submit}>
         <p className="admin__eyebrow">Perfect Events NI</p>
-        <h1 className="login__title">{needsNewPassword ? 'Choose a password' : 'Admin sign in'}</h1>
+        <h1 className="login__title">{titles[mode]}</h1>
 
-        {needsNewPassword ? (
-          <>
-            <p className="login__hint">
-              First sign-in. Pick a new password: at least 12 characters with upper and lower case letters and a number.
-            </p>
-            <label className="field">
-              <span>New password</span>
-              <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} autoComplete="new-password" required autoFocus />
-            </label>
-            <label className="field">
-              <span>Confirm new password</span>
-              <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} autoComplete="new-password" required />
-            </label>
-          </>
-        ) : (
-          <>
-            <label className="field">
-              <span>Email</span>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required autoFocus />
-            </label>
-            <label className="field">
-              <span>Password</span>
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
-            </label>
-          </>
+        {mode === 'new-password' && (
+          <p className="login__hint">
+            First sign-in. Pick a new password: at least 12 characters with upper and lower case letters and a number.
+          </p>
         )}
+        {mode === 'forgot' && (
+          <p className="login__hint">Enter the admin email address and Cognito will email you a code to set a new password.</p>
+        )}
+        {info && <p className="notice notice--ok">{info}</p>}
+
+        {mode !== 'new-password' && (
+          <label className="field">
+            <span>Email</span>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required autoFocus readOnly={mode === 'reset'} />
+          </label>
+        )}
+
+        {mode === 'signin' && (
+          <label className="field">
+            <span>Password</span>
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
+          </label>
+        )}
+
+        {mode === 'reset' && (
+          <label className="field">
+            <span>Reset code</span>
+            <input type="text" inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} autoComplete="one-time-code" required autoFocus />
+          </label>
+        )}
+
+        {(mode === 'new-password' || mode === 'reset') && passwordFields}
 
         {error && <p className="notice notice--error" role="alert">{error}</p>}
 
         <button type="submit" className="button button--primary" disabled={busy}>
-          {busy ? 'Please wait…' : needsNewPassword ? 'Set password and sign in' : 'Sign in'}
+          {busy ? 'Please wait…' : actions[mode]}
         </button>
+
+        {mode === 'signin' && (
+          <button type="button" className="button button--link" onClick={() => switchMode('forgot')}>Forgot password?</button>
+        )}
+        {(mode === 'forgot' || mode === 'reset') && (
+          <button type="button" className="button button--link" onClick={() => switchMode('signin')}>Back to sign in</button>
+        )}
       </form>
     </div>
   );
@@ -239,10 +309,16 @@ function BookingList({ onOpen, onAuthLost }) {
             </thead>
             <tbody>
               {visible.map((b) => (
-                <tr key={b.id} onClick={() => onOpen(b.id)} tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && onOpen(b.id)}>
+                <tr key={b.id} onClick={() => onOpen(b.id)}>
                   <td className={b.eventDate === 'unknown' ? 'muted' : ''}>{formatEventDate(b.eventDate)}</td>
                   <td>
-                    <strong>{b.client?.name || 'Unknown'}</strong>
+                    <a
+                      className="row-link"
+                      href={`/admin/${encodeURIComponent(b.id)}`}
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); onOpen(b.id); }}
+                    >
+                      {b.client?.name || 'Unknown'}
+                    </a>
                     <div className="muted small">{reference(b.id)}</div>
                   </td>
                   <td>
@@ -338,7 +414,7 @@ function BookingDetail({ id, onBack, onAuthLost }) {
     setError('');
     setBusy(true);
     try {
-      apply(await updateBooking(id, changes));
+      apply(await updateBooking(id, { ...changes, expectedUpdatedAt: booking.updatedAt }));
       setSaved(true);
     } catch (err) {
       if (err.status === 401) return onAuthLost();
