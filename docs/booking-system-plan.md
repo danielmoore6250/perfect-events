@@ -106,13 +106,23 @@ manual deploys.
   The stack itself syncs `build/` to S3 and invalidates CloudFront, so one job
   covers front and back end. Concurrency group prevents overlapping deploys.
 - `.github/workflows/pr-checks.yml` — on PRs to `main` and pushes to `main`:
-  install, React build, infra type check, `cdk synth`. Synth needs no credentials.
+  install, Lambda handler tests, React build, infra type check, `cdk synth`. Synth
+  needs no credentials.
 - `DEPLOYMENT.md` — the one-time AWS setup, copy-paste ready.
 
-No test step: the only test file is CRA boilerplate (`renders learn react link`)
-that no longer matches the site, and CRA's jest cannot resolve Swiper's subpath
-exports (`transformIgnorePatterns` does not fix it — it is a resolver issue, not a
-transform one). Worth replacing with real tests of the Lambda handler.
+### Tests
+
+`aws/lambda/send-enquiry/test/handler.test.js`, run with `npm test` in that
+directory. Uses Node's built-in test runner so nothing extra goes in the Lambda
+bundle. DynamoDB is stubbed at the document client and email at the nodemailer
+transport, so tests assert on the exact record written and the exact HTML sent:
+validation, escaping, date handling, the write-before-email order, and every
+degraded path (write fails, table unset, either email fails, both fail).
+
+There are no React tests. The CRA boilerplate test was removed: it no longer
+matched the site, and CRA's jest cannot resolve Swiper's subpath exports
+(`transformIgnorePatterns` does not fix it — it is a resolver issue, not a
+transform one).
 
 ## Outstanding
 

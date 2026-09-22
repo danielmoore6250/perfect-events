@@ -25,13 +25,20 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             infra/package-lock.json
+            aws/lambda/send-enquiry/package-lock.json
 
       - name: Install site dependencies
         run: npm ci
 
-      # No test step yet: the only test file is the create-react-app boilerplate
-      # ("renders learn react link"), which no longer matches this site, and CRA's
-      # jest cannot resolve Swiper's subpath exports. Add real tests, then a step here.
+      - name: Install enquiry Lambda dependencies
+        working-directory: aws/lambda/send-enquiry
+        run: npm ci
+
+      - name: Test enquiry Lambda
+        # Node's built-in test runner; SES and DynamoDB are stubbed. There are no
+        # React tests: CRA's jest cannot resolve Swiper's subpath exports.
+        working-directory: aws/lambda/send-enquiry
+        run: npm test
 
       - name: Build React app
         env:

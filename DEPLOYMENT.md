@@ -6,7 +6,7 @@ are ever stored in GitHub. This mirrors the setup used by the Irish dancing app.
 | Workflow | File | Trigger | What it does |
 | --- | --- | --- | --- |
 | Deploy | `.github/workflows/deploy.yml` | Manual ("Run workflow" / `gh workflow run deploy.yml`) | Builds the React app and runs `cdk deploy`, which uploads `build/` to S3, invalidates CloudFront and updates the Lambda, API and DynamoDB table |
-| PR Checks | `.github/workflows/pr-checks.yml` | Pull requests to `main`, and pushes to `main` | `npm ci`, React build, infra type check, `cdk synth` |
+| PR Checks | `.github/workflows/pr-checks.yml` | Pull requests to `main`, and pushes to `main` | `npm ci`, Lambda handler tests, React build, infra type check, `cdk synth` |
 
 Deploys never happen automatically on merge — you choose when to deploy.
 
