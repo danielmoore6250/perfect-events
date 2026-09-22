@@ -1,11 +1,103 @@
+const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const { SESv2Client, SendEmailCommand } = require('@aws-sdk/client-sesv2');
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, PutCommand } = require('@aws-sdk/lib-dynamodb');
 
 // Amazon SES v2 client — authenticates via the Lambda's IAM role (no passwords).
 const sesClient = new SESv2Client({ region: 'eu-west-1' });
 
+// DynamoDB holds one record per enquiry so bookings live somewhere other than the inbox.
+const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({ region: 'eu-west-1' }), {
+  marshallOptions: { removeUndefinedValues: true }
+});
+const BOOKINGS_TABLE = process.env.BOOKINGS_TABLE;
+
 // Every email is sent from the business address on the SES-verified domain.
 const FROM = 'Perfect Events NI <enquiries@perfecteventsni.com>';
+
+const EVENT_TYPE_LABELS = {
+  wedding: 'Wedding',
+  private: 'Private Event/Party',
+  corporate: 'Corporate Event',
+  'pa-hire': 'PA Hire & Engineering'
+};
+
+const WEDDING_PACKAGE_LABELS = {
+  'full-night': 'Full Night',
+  'after-band': 'After Band',
+  'not-sure': 'Not Sure Yet'
+};
+
+// Client input is never trusted inside email HTML — escape it everywhere.
+const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => HTML_ESCAPES[char]);
+
+const trim = (value) => (typeof value === 'string' ? value.trim() : value == null ? '' : String(value));
+
+// Keeps the ISO date the form sends (YYYY-MM-DD); anything unparseable becomes 'unknown'
+// so the record still sorts predictably in the by-date index.
+const normaliseDate = (value) => {
+  const text = trim(value);
+  const parsed = new Date(text);
+  return text && !Number.isNaN(parsed.getTime()) ? text.slice(0, 10) : 'unknown';
+};
+
+const formatDate = (value) => {
+  const parsed = new Date(trim(value));
+  return Number.isNaN(parsed.getTime())
+    ? 'Not specified'
+    : parsed.toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' });
+};
+
+const labelFor = (labels, value, fallback = 'Not specified') => {
+  const text = trim(value);
+  if (!text) return fallback;
+  return labels[text] || text.charAt(0).toUpperCase() + text.slice(1).replace(/-/g, ' ');
+};
+
+// Saves the enquiry as a booking record in the 'enquiry' stage.
+// Returns the record, or null if the write failed — the emails go out either way,
+// because losing the enquiry entirely is worse than losing the record of it.
+const saveEnquiry = async (enquiry) => {
+  if (!BOOKINGS_TABLE) {
+    console.warn('BOOKINGS_TABLE is not set — skipping the booking record');
+    return null;
+  }
+
+  const now = new Date().toISOString();
+  const record = {
+    id: crypto.randomUUID(),
+    recordType: 'booking',
+    status: 'enquiry',
+    source: 'website',
+    createdAt: now,
+    updatedAt: now,
+    eventDate: normaliseDate(enquiry.eventDate),
+    client: {
+      name: enquiry.name,
+      email: enquiry.email,
+      phone: enquiry.phone
+    },
+    event: {
+      type: enquiry.eventType || null,
+      weddingPackage: enquiry.eventType === 'wedding' ? enquiry.weddingPackage || null : null,
+      venue: enquiry.venue || null,
+      guestCount: enquiry.guestCount || null
+    },
+    message: enquiry.message || null,
+    statusHistory: [{ status: 'enquiry', at: now, by: 'website-form' }]
+  };
+
+  try {
+    await docClient.send(new PutCommand({ TableName: BOOKINGS_TABLE, Item: record }));
+    console.log('Booking record saved:', record.id);
+    return record;
+  } catch (err) {
+    console.error('Failed to save booking record:', err.message, err);
+    return null;
+  }
+};
 
 exports.handler = async (event) => {
   const headers = {
@@ -30,7 +122,19 @@ exports.handler = async (event) => {
   }
 
   try {
-    const formData = JSON.parse(event.body);
+    const submitted = JSON.parse(event.body);
+
+    const formData = {
+      name: trim(submitted.name),
+      email: trim(submitted.email),
+      phone: trim(submitted.phone),
+      eventType: trim(submitted.eventType),
+      weddingPackage: trim(submitted.weddingPackage),
+      eventDate: trim(submitted.eventDate),
+      venue: trim(submitted.venue),
+      guestCount: trim(submitted.guestCount),
+      message: trim(submitted.message)
+    };
 
     // Validate required fields
     if (!formData.name || !formData.email || !formData.phone) {
@@ -40,6 +144,24 @@ exports.handler = async (event) => {
         body: JSON.stringify({ error: 'Missing required fields' })
       };
     }
+
+    // Save first so the enquiry is on record before any email is attempted.
+    const record = await saveEnquiry(formData);
+    const reference = record ? record.id.slice(0, 8).toUpperCase() : null;
+
+    // Pre-escaped values for the email templates.
+    const safe = {
+      name: esc(formData.name),
+      email: esc(formData.email),
+      phone: esc(formData.phone),
+      eventType: esc(labelFor(EVENT_TYPE_LABELS, formData.eventType, 'Event')),
+      weddingPackage: esc(labelFor(WEDDING_PACKAGE_LABELS, formData.weddingPackage)),
+      eventDate: esc(formatDate(formData.eventDate)),
+      venue: esc(formData.venue || 'Not specified'),
+      guestCount: esc(formData.guestCount || 'Not specified'),
+      message: esc(formData.message).replace(/\n/g, '<br>'),
+      reference: esc(reference || 'not recorded')
+    };
 
     // Send via Amazon SES (no SMTP, no passwords — uses the Lambda IAM role)
     console.log('Sending via Amazon SES from:', FROM);
@@ -54,7 +176,7 @@ exports.handler = async (event) => {
     const businessMailOptions = {
       from: FROM,
       to: 'enquiries@perfecteventsni.com',
-      subject: `New Enquiry from ${formData.name} - ${formData.eventType}`,
+      subject: `New Enquiry from ${formData.name} - ${labelFor(EVENT_TYPE_LABELS, formData.eventType, 'Event')}`,
       html: `
         <!DOCTYPE html>
         <html>
@@ -83,22 +205,22 @@ exports.handler = async (event) => {
                 <h1>🎵 New Event Enquiry</h1>
                 <p style="margin: 10px 0 0 0; opacity: 0.9;">Perfect Events NI</p>
               </div>
-              
+
               <div class="content">
                 <div class="section">
                   <div class="section-title">Client Information</div>
                   <div class="info-grid">
                     <div class="info-item">
                       <div class="info-label">Name</div>
-                      <div class="info-value">${formData.name}</div>
+                      <div class="info-value">${safe.name}</div>
                     </div>
                     <div class="info-item">
                       <div class="info-label">Email</div>
-                      <div class="info-value"><a href="mailto:${formData.email}" style="color: #0d0d0d;">${formData.email}</a></div>
+                      <div class="info-value"><a href="mailto:${encodeURI(formData.email)}" style="color: #0d0d0d;">${safe.email}</a></div>
                     </div>
                     <div class="info-item">
                       <div class="info-label">Phone</div>
-                      <div class="info-value"><a href="tel:${formData.phone}" style="color: #0d0d0d;">${formData.phone}</a></div>
+                      <div class="info-value"><a href="tel:${encodeURI(formData.phone)}" style="color: #0d0d0d;">${safe.phone}</a></div>
                     </div>
                   </div>
                 </div>
@@ -108,33 +230,40 @@ exports.handler = async (event) => {
                   <div class="info-grid">
                     <div class="info-item">
                       <div class="info-label">Event Type</div>
-                      <div class="info-value">${formData.eventType.charAt(0).toUpperCase() + formData.eventType.slice(1).replace('-', ' ')}</div>
+                      <div class="info-value">${safe.eventType}</div>
                     </div>
                     <div class="info-item">
                       <div class="info-label">Event Date</div>
-                      <div class="info-value">${new Date(formData.eventDate).toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
+                      <div class="info-value">${safe.eventDate}</div>
                     </div>
                     <div class="info-item">
                       <div class="info-label">Venue/Location</div>
-                      <div class="info-value">${formData.venue}</div>
+                      <div class="info-value">${safe.venue}</div>
                     </div>
                     <div class="info-item">
                       <div class="info-label">Expected Guests</div>
-                      <div class="info-value">${formData.guestCount || 'Not specified'}</div>
+                      <div class="info-value">${safe.guestCount}</div>
                     </div>
+                    ${formData.eventType === 'wedding' ? `
+                    <div class="info-item">
+                      <div class="info-label">Wedding Package</div>
+                      <div class="info-value">${safe.weddingPackage}</div>
+                    </div>
+                    ` : ''}
                   </div>
                 </div>
 
                 ${formData.message ? `
                 <div class="section">
                   <div class="section-title">Additional Details</div>
-                  <div class="message-box">${formData.message.replace(/\n/g, '<br>')}</div>
+                  <div class="message-box">${safe.message}</div>
                 </div>
                 ` : ''}
 
                 <div class="footer">
                   <p>This enquiry was submitted through Perfect Events NI website</p>
-                  <p>Reply to: ${formData.email}</p>
+                  <p>Reply to: ${safe.email}</p>
+                  <p>Booking reference: ${safe.reference}</p>
                 </div>
               </div>
             </div>
@@ -178,11 +307,11 @@ exports.handler = async (event) => {
                 <h1>✓ Enquiry Received!</h1>
                 <p style="margin: 10px 0 0 0; opacity: 0.9;">Thank you for choosing Perfect Events NI</p>
               </div>
-              
+
               <div class="content">
                 <div class="section">
-                  <p>Hi ${formData.name},</p>
-                  <p>Thank you for submitting your event enquiry! We're thrilled that you're considering Perfect Events NI for your ${formData.eventType}.</p>
+                  <p>Hi ${safe.name},</p>
+                  <p>Thank you for submitting your event enquiry! We're thrilled that you're considering Perfect Events NI for your ${safe.eventType.toLowerCase()}.</p>
                 </div>
 
                 <div class="highlight">
@@ -194,15 +323,15 @@ exports.handler = async (event) => {
                   <p><strong>Your Event Details:</strong></p>
                   <div class="summary-box">
                     <div class="summary-label">Event Type</div>
-                    <div class="summary-value">${formData.eventType.charAt(0).toUpperCase() + formData.eventType.slice(1).replace('-', ' ')}</div>
+                    <div class="summary-value">${safe.eventType}</div>
                   </div>
                   <div class="summary-box">
                     <div class="summary-label">Event Date</div>
-                    <div class="summary-value">${new Date(formData.eventDate).toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
+                    <div class="summary-value">${safe.eventDate}</div>
                   </div>
                   <div class="summary-box">
                     <div class="summary-label">Venue</div>
-                    <div class="summary-value">${formData.venue}</div>
+                    <div class="summary-value">${safe.venue}</div>
                   </div>
                 </div>
 
@@ -265,7 +394,20 @@ exports.handler = async (event) => {
 
     console.log('Email results:', JSON.stringify(results, null, 2));
 
-    if (results.businessEmailSent && results.userEmailSent) {
+    // The enquiry is safe once it is either recorded or emailed to the business.
+    if (record || results.businessEmailSent) {
+      if (!results.businessEmailSent || !results.userEmailSent) {
+        console.warn('Partial delivery:', { saved: Boolean(record), ...results });
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            message: 'Enquiry received. There was a minor issue, but we have it on record.'
+          })
+        };
+      }
+
       return {
         statusCode: 200,
         headers,
@@ -274,29 +416,19 @@ exports.handler = async (event) => {
           message: 'Enquiry sent successfully'
         })
       };
-    } else if (results.businessEmailSent || results.userEmailSent) {
-      console.warn('Partial email failure:', results);
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({
-          success: true,
-          message: 'Enquiry received. There was a minor issue, but we have it on record.'
-        })
-      };
-    } else {
-      console.error('Both emails failed to send');
-      return {
-        statusCode: 500,
-        headers,
-        body: JSON.stringify({
-          error: 'Failed to send enquiry',
-          details: 'Email service temporarily unavailable. Please try again or contact us directly.'
-        })
-      };
     }
+
+    console.error('Enquiry was neither saved nor emailed to the business');
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({
+        error: 'Failed to send enquiry',
+        details: 'Email service temporarily unavailable. Please try again or contact us directly.'
+      })
+    };
   } catch (error) {
-    console.error('Email send error:', error);
+    console.error('Enquiry handling error:', error);
     return {
       statusCode: 500,
       headers,
