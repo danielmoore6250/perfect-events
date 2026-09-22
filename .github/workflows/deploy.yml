@@ -1,0 +1,69 @@
+name: Deploy
+
+# Manual deploys only: triggered via the "Run workflow" button or
+# `gh workflow run deploy.yml`. Merging to main never deploys on its own.
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to deploy'
+        required: false
+        default: 'main'
+        type: string
+
+# One deploy at a time — two concurrent CDK runs on the same stack will conflict.
+concurrency:
+  group: deploy-perfect-events
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build site and deploy stack
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ inputs.branch || 'main' }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            infra/package-lock.json
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c # v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: eu-west-1
+
+      - name: Install site dependencies
+        run: npm ci
+
+      - name: Build React app
+        # CI=true makes warnings fail the build, matching create-react-app's CI behaviour.
+        env:
+          CI: true
+        run: npm run build
+
+      - name: Install CDK dependencies
+        working-directory: infra
+        run: npm ci
+
+      - name: Deploy stack
+        # The stack uploads the build/ folder to S3 and invalidates CloudFront itself.
+        working-directory: infra
+        run: npx cdk deploy --require-approval never --outputs-file cdk-outputs.json
+
+      - name: Show stack outputs
+        working-directory: infra
+        run: cat cdk-outputs.json
