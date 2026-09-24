@@ -293,6 +293,9 @@ export class InfraStack extends cdk.Stack {
       environment: {
         APPLE_MUSIC_PARAM_PREFIX: appleMusicParamPrefix,
       },
+      // Bounds what a flood of requests can cost in Lambda time and provider
+      // quota: at most this many containers, whatever the API lets through.
+      reservedConcurrentExecutions: 5,
     });
     musicSearchFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['ssm:GetParameters'],
@@ -368,11 +371,25 @@ export class InfraStack extends cdk.Stack {
       authorizer: adminAuthorizer,
     });
 
-    // Song search and playlist import for the planning form. Public, read-only,
-    // and API Gateway's default throttling is the rate limit.
+    // Song search and playlist import for the planning form. Public and
+    // read-only. Each route is throttled at the stage (below), the Lambda has
+    // reserved concurrency, and it rate-limits per caller address itself.
     const musicIntegration = new integrations.HttpLambdaIntegration('MusicSearchIntegration', musicSearchFn);
     httpApi.addRoutes({ path: '/music/search', methods: [apigatewayv2.HttpMethod.GET], integration: musicIntegration });
     httpApi.addRoutes({ path: '/music/playlist', methods: [apigatewayv2.HttpMethod.GET], integration: musicIntegration });
+
+    // Per-route throttling on the default stage. Search is a type-ahead so it
+    // gets more headroom; a playlist import is a handful per event at most.
+    // These are totals across all callers, sized for a handful of clients
+    // planning at once, not for a public product.
+    const defaultStage = httpApi.defaultStage?.node.defaultChild as apigatewayv2.CfnStage;
+    defaultStage.routeSettings = {
+      'GET /music/search': { throttlingRateLimit: 10, throttlingBurstLimit: 20 },
+      'GET /music/playlist': { throttlingRateLimit: 1, throttlingBurstLimit: 3 },
+      'GET /plan/{token}': { throttlingRateLimit: 5, throttlingBurstLimit: 10 },
+      'POST /plan/{token}': { throttlingRateLimit: 2, throttlingBurstLimit: 5 },
+      'POST /send-enquiry': { throttlingRateLimit: 2, throttlingBurstLimit: 5 },
+    };
 
     // The client planning form: <api>/plan/<token>. Token is the credential.
     httpApi.addRoutes({

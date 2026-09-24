@@ -37,8 +37,12 @@ export const togglePreview = async (key, url) => {
   try {
     await player.play();
   } catch {
-    playingKey = null;
-    notify();
+    // Only clear if this request is still the active one; a rejection from a
+    // preview that was already replaced must not hide the newer one's state.
+    if (playingKey === key) {
+      playingKey = null;
+      notify();
+    }
   }
 };
 

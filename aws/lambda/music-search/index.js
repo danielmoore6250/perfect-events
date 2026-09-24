@@ -20,6 +20,12 @@ const APPLE_STOREFRONT = 'gb';
 const APPLE_API = 'https://api.music.apple.com/v1';
 const DEEZER_API = 'https://api.deezer.com';
 
+// Per-caller limit, kept in memory per container. Best effort (each container
+// counts separately) but it stops one address hammering the catalogues.
+const RATE_WINDOW_MS = 60 * 1000;
+const RATE_MAX_SEARCHES = 60;
+const RATE_MAX_IMPORTS = 10;
+
 const MAX_QUERY_LENGTH = 100;
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 25;
@@ -244,6 +250,24 @@ const importPlaylist = async (rawUrl) => {
   throw new HttpError(400, 'Only Apple Music and Deezer playlist links are supported');
 };
 
+// ---- Per-address rate limit -----------------------------------------------
+
+const buckets = new Map(); // ip -> { windowStart, searches, imports }
+const rateCheck = (ip, kind, now = Date.now()) => {
+  if (buckets.size > 5000) buckets.clear();
+  let b = buckets.get(ip);
+  if (!b || now - b.windowStart >= RATE_WINDOW_MS) {
+    b = { windowStart: now, searches: 0, imports: 0 };
+    buckets.set(ip, b);
+  }
+  if (kind === 'search') {
+    b.searches += 1;
+    return b.searches <= RATE_MAX_SEARCHES;
+  }
+  b.imports += 1;
+  return b.imports <= RATE_MAX_IMPORTS;
+};
+
 // ---- Handler --------------------------------------------------------------
 
 exports.handler = async (event) => {
@@ -253,8 +277,15 @@ exports.handler = async (event) => {
 
   const path = (event.rawPath || event.path || '').replace(/\/+$/, '');
   const params = event.queryStringParameters || {};
+  const ip = event.requestContext?.http?.sourceIp || 'unknown';
 
   try {
+    if (path === '/music/search' || path === '/music/playlist') {
+      if (!rateCheck(ip, path === '/music/search' ? 'search' : 'import')) {
+        throw new HttpError(429, 'Slow down a little and try again in a minute.');
+      }
+    }
+
     if (path === '/music/search') {
       const query = String(params.q || '').trim().replace(/\s+/g, ' ');
       if (!query) throw new HttpError(400, 'q is required');
@@ -279,8 +310,10 @@ exports.handler = async (event) => {
 };
 
 exports.signDeveloperToken = signDeveloperToken;
+exports.rateCheck = rateCheck;
 exports._resetForTests = () => {
   appleCredentials = undefined;
   cachedToken = null;
   searchCache.clear();
+  buckets.clear();
 };

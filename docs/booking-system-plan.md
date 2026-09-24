@@ -333,8 +333,17 @@ shows it as a textarea with a "Use song search instead" switch.
 - The notification email and the calendar description render songs as
   "Artist – Title".
 
-Tests: 13 music-search Lambda, 21 planning Lambda, 17 calendar, 14 React cases
-for the planning page and picker, 15 for the admin screen.
+### Abuse limits
+
+The music routes are public, so three layers bound what a flood can cost: per-route
+throttling on the API stage (search 10/s burst 20, playlist import 1/s burst 3,
+with the enquiry and planning routes throttled too), reserved concurrency of 5 on
+the music Lambda, and a per-address counter inside it (60 searches and 10 imports
+per minute per container, 429 beyond that). Sized for a handful of clients
+planning at once, not for a public product.
+
+Tests: 14 music-search Lambda, 21 planning Lambda, 17 calendar, 16 React cases
+for the planning page and picker, 16 for the admin screen.
 
 ## Phase 5 — reminders and files
 

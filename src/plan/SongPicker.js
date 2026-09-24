@@ -99,7 +99,11 @@ export default function SongPicker({ label, hint, value, onChange, max = 100, al
         if (!controller.signal.aborted) setSearching(false);
       }
     }, SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(timer);
+    return () => {
+      // A request already in flight for the old text must not land on the new one.
+      clearTimeout(timer);
+      abortRef.current?.abort();
+    };
   }, [query]);
 
   const full = songs.length >= max;

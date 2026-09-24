@@ -260,3 +260,23 @@ test('the Apple key is read from Parameter Store once per container', async () =
   await handler(request('/music/search', { q: 'b' }));
   assert.equal(SSMClient.prototype.send.mock.callCount(), 1);
 });
+
+test('a single address is limited per minute, searches and imports separately', async () => {
+  const { handler, rateCheck } = loadModule();
+  const withIp = (req, ip) => ({ ...req, requestContext: { http: { method: 'GET', sourceIp: ip } } });
+
+  for (let i = 0; i < 60; i += 1) {
+    assert.equal((await handler(withIp(request('/music/search', { q: `song ${i}` }), '1.1.1.1'))).statusCode, 200);
+  }
+  const blocked = await handler(withIp(request('/music/search', { q: 'one more' }), '1.1.1.1'));
+  assert.equal(blocked.statusCode, 429);
+  assert.match(JSON.parse(blocked.body).error, /Slow down/);
+
+  // Another address is unaffected, and imports for the first are counted separately.
+  assert.equal((await handler(withIp(request('/music/search', { q: 'x' }), '2.2.2.2'))).statusCode, 200);
+  assert.equal((await handler(withIp(request('/music/playlist', { url: 'https://www.deezer.com/en/playlist/3155776842' }), '1.1.1.1'))).statusCode, 200);
+
+  // The window resets after a minute.
+  const later = Date.now() + 61 * 1000;
+  assert.equal(rateCheck('1.1.1.1', 'search', later), true);
+});

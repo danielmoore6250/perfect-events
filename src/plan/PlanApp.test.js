@@ -283,3 +283,57 @@ test('a 423 on save puts the page into the locked state instead of leaving it ed
   expect(screen.getByLabelText('Anything else we should know?')).toBeDisabled();
   expect(screen.queryByRole('button', { name: /Save|Send/ })).not.toBeInTheDocument();
 });
+
+test('a search response that arrives after the text changed is discarded', async () => {
+  let resolveSlow;
+  const slow = new Promise((resolve) => { resolveSlow = resolve; });
+  const original = global.fetch.getMockImplementation();
+  global.fetch.mockImplementation(async (url, init) => {
+    if (url.includes('/music/search') && url.includes('q=slow')) {
+      searches.push('slow');
+      await slow;
+      if (init?.signal?.aborted) {
+        const err = new Error('aborted');
+        err.name = 'AbortError';
+        throw err;
+      }
+      return jsonResponse(200, { source: 'apple', songs: [song(999, 'Stale result', 'Nobody')] });
+    }
+    return original(url, init);
+  });
+
+  visit(`/plan/${TOKEN}`);
+  await screen.findByRole('group', { name: 'Must play' });
+  searchIn('Must play', 'slow');
+  await waitFor(() => expect(searches).toContain('slow'));
+
+  // The client moves on before the slow response lands.
+  searchIn('Must play', 'bright');
+  await picker('Must play').findByRole('button', { name: 'Add Mr Brightside by The Killers' });
+  resolveSlow();
+  await new Promise((r) => setTimeout(r, 20));
+
+  expect(picker('Must play').queryByText('Stale result')).not.toBeInTheDocument();
+  expect(picker('Must play').getByRole('button', { name: 'Add Mr Brightside by The Killers' })).toBeInTheDocument();
+});
+
+test('starting a second preview while the first is still starting keeps the second marked as playing', async () => {
+  let rejectFirst;
+  window.HTMLMediaElement.prototype.play = jest
+    .fn()
+    .mockImplementationOnce(() => new Promise((_, reject) => { rejectFirst = reject; }))
+    .mockResolvedValue();
+
+  visit(`/plan/${TOKEN}`);
+  await screen.findByRole('group', { name: 'First dance' });
+  searchIn('First dance', 'perf');
+  await picker('First dance').findByRole('button', { name: 'Preview Perfect' });
+
+  fireEvent.click(picker('First dance').getByRole('button', { name: 'Preview Perfect' }));
+  fireEvent.click(picker('First dance').getByRole('button', { name: 'Preview Perfect Symphony' }));
+  rejectFirst(new Error('interrupted'));
+  await new Promise((r) => setTimeout(r, 0));
+
+  expect(picker('First dance').getByRole('button', { name: 'Stop preview of Perfect Symphony' })).toBeInTheDocument();
+  expect(picker('First dance').getByRole('button', { name: 'Preview Perfect' })).toBeInTheDocument();
+});
