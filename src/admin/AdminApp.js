@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from 'react';
 import '../styles/Admin.css';
 import { getSession, signIn, completeNewPassword, forgotPassword, confirmForgotPassword, clearSession } from './auth';
 import { listBookings, getBooking, updateBooking, getCalendarLink, rotateCalendarLink, calendarFeedUrl, createPlanningLink, planningFormUrl } from './api';
-import { EVENT_TYPE_LABELS, WEDDING_PACKAGE_LABELS, labelFor, formatEventDate, formatDateTime, PLANNING_SECTIONS, PLANNING_FIELD_LABELS, answersToSetlistText } from '../shared/format';
+import { EVENT_TYPE_LABELS, WEDDING_PACKAGE_LABELS, labelFor, formatEventDate, formatDateTime, PLANNING_SECTIONS, PLANNING_FIELD_LABELS, fieldApplies, answersToSetlistText } from '../shared/format';
 import { PreviewButton, SongArt } from '../plan/MusicPlanner';
 import { subscribePreview, stopPreview } from '../shared/preview';
 
@@ -396,7 +396,7 @@ function PlanningCard({ booking, onBookingChange, onAuthLost }) {
   const url = booking.planningToken ? planningFormUrl(booking.planningToken) : null;
   const answers = booking.planning?.answers || {};
   const answered = PLANNING_SECTIONS.flatMap((s) => s.fields).filter((f) => answers[f.key] && (!Array.isArray(answers[f.key]) || answers[f.key].length));
-  const isWedding = booking.event?.type === 'wedding';
+  const eventType = booking.event?.type;
   const setlist = answersToSetlistText(answers);
 
   const copySetlist = async () => {
@@ -479,7 +479,7 @@ function PlanningCard({ booking, onBookingChange, onAuthLost }) {
               )}
               <dl className="facts facts--stacked">
                 {answered
-                  .filter((f) => !f.weddingOnly || isWedding)
+                  .filter((f) => fieldApplies(f, eventType))
                   .map((f) => (
                     <div key={f.key} className="planning__item">
                       <dt>{PLANNING_FIELD_LABELS[f.key]}</dt>
@@ -596,7 +596,17 @@ function BookingDetail({ id, onBack, onAuthLost }) {
               <dt>Type</dt><dd>{labelFor(EVENT_TYPE_LABELS, event.type)}</dd>
               {event.type === 'wedding' && (<><dt>Package</dt><dd>{labelFor(WEDDING_PACKAGE_LABELS, event.weddingPackage)}</dd></>)}
               <dt>Venue</dt><dd>{event.venue || '—'}</dd>
-              <dt>Guests</dt><dd>{event.guestCount || '—'}</dd>
+              <dt>Guests</dt>
+              <dd>
+                {booking.planning?.answers?.guestCount ? (
+                  <>
+                    {booking.planning.answers.guestCount}
+                    {event.guestCount && String(event.guestCount) !== String(booking.planning.answers.guestCount) && (
+                      <span className="muted small"> (was {event.guestCount} on the enquiry)</span>
+                    )}
+                  </>
+                ) : (event.guestCount || '—')}
+              </dd>
               <dt>Source</dt><dd>{booking.source || '—'}</dd>
             </dl>
           </div>

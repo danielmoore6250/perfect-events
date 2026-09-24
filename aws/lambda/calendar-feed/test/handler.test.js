@@ -168,6 +168,11 @@ test('planning form timings and contacts appear in the description once the clie
   assert.ok(description.includes('First dance: Perfect - Ed Sheeran'));
   assert.ok(description.includes('Venue contact: Sam 028 9000 0000'));
 
+  bookings = [booking({ planning: { answers: { guestCount: 120 }, submittedAt: 'x', updatedAt: 'x' } })];
+  const updated = unfold((await handler(request(TOKEN))).body);
+  assert.ok(updated.includes('Guests: 120'), 'the client\'s updated count replaces the enquiry number');
+  assert.ok(!updated.includes('Guests: 150'));
+
   bookings = [booking()];
   const plain = unfold((await handler(request(TOKEN))).body);
   assert.ok(!plain.includes('Timings:'));

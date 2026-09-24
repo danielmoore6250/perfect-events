@@ -424,7 +424,8 @@ test('the planning card renders picked songs with artwork, an Open link, and cop
           { source: 'deezer', id: '9', title: 'Boston', artist: 'Augustana', album: null, artwork: null, previewUrl: null, url: 'https://www.deezer.com/track/9', durationMs: null },
           { source: 'manual', id: null, title: 'Our song', artist: '', album: null, artwork: null, previewUrl: null, url: null, durationMs: null }
         ],
-        doNotPlay: 'Cha Cha Slide'
+        doNotPlay: 'Cha Cha Slide',
+        guestCount: 120
       },
       submittedAt: '2026-09-25T10:00:00.000Z',
       updatedAt: '2026-09-25T10:00:00.000Z'
@@ -452,6 +453,9 @@ test('the planning card renders picked songs with artwork, an Open link, and cop
 
   // Legacy text still shows as text.
   expect(screen.getByText('Cha Cha Slide')).toBeInTheDocument();
+
+  // The client's updated guest count replaces the enquiry number, with the original noted.
+  expect(screen.getByText('(was 150 on the enquiry)', { exact: false })).toBeInTheDocument();
 
   // The admin can preview a picked song; playback streams through the preview route.
   window.HTMLMediaElement.prototype.play = jest.fn().mockResolvedValue();

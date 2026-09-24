@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from 'react';
 import '../styles/Admin.css';
 import '../styles/Plan.css';
 import { API_BASE } from '../config';
-import { PLANNING_SECTIONS, WEDDING_PACKAGE_LABELS, formatDateTime } from '../shared/format';
+import { PLANNING_SECTIONS, PLANNING_FIELDS, fieldApplies, WEDDING_PACKAGE_LABELS, formatDateTime } from '../shared/format';
 import MusicPlanner from './MusicPlanner';
 import { stopPreview } from '../shared/preview';
 
@@ -15,7 +15,11 @@ const tokenFromPath = () => {
 };
 
 const emptyAnswers = () =>
-  Object.fromEntries(PLANNING_SECTIONS.flatMap((s) => s.fields.map((f) => [f.key, f.type === 'songs' ? [] : ''])));
+  Object.fromEntries(PLANNING_FIELDS.map((f) => [f.key, f.type === 'songs' ? [] : '']));
+
+// Only the fields this form knows about; anything else on the record is left alone.
+const knownAnswers = (answers = {}) =>
+  Object.fromEntries(PLANNING_FIELDS.filter((f) => answers[f.key] !== undefined && answers[f.key] !== null).map((f) => [f.key, answers[f.key]]));
 
 const sameAnswer = (a, b) => JSON.stringify(a ?? '') === JSON.stringify(b ?? '');
 
@@ -37,7 +41,9 @@ export default function PlanApp() {
 
   const apply = useCallback((b) => {
     setBooking(b);
-    const next = { ...emptyAnswers(), ...(b.answers || {}) };
+    const next = { ...emptyAnswers(), ...knownAnswers(b.answers) };
+    // The guest count starts from the enquiry until the client changes it.
+    if (next.guestCount === '' && b.guestCount) next.guestCount = String(b.guestCount);
     setAnswers(next);
     setSaved(next);
   }, []);
@@ -128,6 +134,7 @@ export default function PlanApp() {
   }
 
   const isWedding = booking.eventType === 'wedding';
+  const eventType = booking.eventType;
   const locked = booking.locked;
 
   return (
@@ -159,7 +166,7 @@ export default function PlanApp() {
 
       <form className="plan__form" onSubmit={submit}>
         {PLANNING_SECTIONS.map((section) => {
-          const fields = section.fields.filter((f) => !f.weddingOnly || isWedding);
+          const fields = section.fields.filter((f) => fieldApplies(f, eventType));
           if (!fields.length) return null;
           return (
             <fieldset className="card plan__section" key={section.title} disabled={locked || busy}>
@@ -173,7 +180,7 @@ export default function PlanApp() {
                   disabled={locked || busy}
                 />
               )}
-              <div className={section.fields[0].type === 'time' ? 'plan__grid' : 'plan__stack'}>
+              <div className={['time', 'number'].includes(section.fields[0].type) ? 'plan__grid' : 'plan__stack'}>
                 {fields.filter((f) => f.type !== 'songs').map((f) => (
                   <label className="field" key={f.key}>
                     <span>{f.label}</span>
@@ -181,6 +188,8 @@ export default function PlanApp() {
                       <textarea rows={4} value={answers[f.key]} onChange={set(f.key)} placeholder={f.placeholder} maxLength={3000} />
                     ) : f.type === 'time' ? (
                       <input type="time" value={answers[f.key]} onChange={set(f.key)} />
+                    ) : f.type === 'number' ? (
+                      <input type="number" inputMode="numeric" min="1" max="5000" step="1" value={answers[f.key]} onChange={set(f.key)} placeholder={f.placeholder} />
                     ) : (
                       <input type="text" value={answers[f.key]} onChange={set(f.key)} placeholder={f.placeholder} maxLength={200} />
                     )}

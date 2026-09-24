@@ -374,8 +374,7 @@ test('song lists are stored as song records with only the known keys', async () 
       answers: {
         firstDance: [song({ extra: 'dropped', durationMs: 263000.7 })],
         mustPlay: [song({ id: '1', title: 'Mr Brightside', artist: 'The Killers' }), { source: 'manual', title: 'Our song', artist: ' Nobody famous ' }],
-        playIfPossible: [song({ source: 'deezer', id: '9', title: 'Boston', artist: 'Augustana', album: null, artwork: null, previewUrl: null, url: null, durationMs: null })],
-        doNotPlay: []
+        doNotPlay: [song({ source: 'deezer', id: '9', title: 'Boston', artist: 'Augustana', album: null, artwork: null, previewUrl: null, url: null, durationMs: null })]
       }
     })
   );
@@ -386,13 +385,12 @@ test('song lists are stored as song records with only the known keys', async () 
   assert.deepEqual(saved.mustPlay[1], {
     source: 'manual', id: null, title: 'Our song', artist: 'Nobody famous', album: null, artwork: null, previewUrl: null, url: null, durationMs: null
   });
-  assert.equal(saved.playIfPossible[0].source, 'deezer');
-  assert.equal(saved.doNotPlay, undefined, 'an empty list is not stored');
+  assert.equal(saved.doNotPlay[0].source, 'deezer');
 
   const html = emails[0].Content.Simple.Body.Html.Data;
   assert.ok(html.includes('Ed Sheeran – Perfect'));
   assert.ok(html.includes('The Killers – Mr Brightside<br>Nobody famous – Our song'));
-  assert.ok(emails[0].Content.Simple.Body.Text.Data.includes('Play if possible: Augustana – Boston'));
+  assert.ok(emails[0].Content.Simple.Body.Text.Data.includes('Do not play: Augustana – Boston'));
 });
 
 test('song lists still accept the plain text that older forms saved', async () => {
@@ -432,4 +430,31 @@ test('songsToText renders records and passes legacy text through', () => {
   assert.equal(songsToText([song(), { source: 'manual', title: 'Untitled', artist: '' }]), 'Ed Sheeran – Perfect\nUntitled');
   assert.equal(songsToText('typed in'), 'typed in');
   assert.equal(songsToText(undefined), '');
+});
+
+test('an empty song list is not stored', async () => {
+  const { handler } = loadModule();
+  await handler(request('POST', TOKEN, { answers: { doNotPlay: [], lastSong: 'X' } }));
+  assert.equal(store['abc-123'].planning.answers.doNotPlay, undefined);
+});
+
+test('guest count is stored as a whole number and shown in the email', async () => {
+  const { handler } = loadModule();
+  let res = await handler(request('POST', TOKEN, { answers: { guestCount: ' 120 ' } }));
+  assert.equal(res.statusCode, 200);
+  assert.equal(store['abc-123'].planning.answers.guestCount, 120);
+  assert.ok(emails[0].Content.Simple.Body.Text.Data.includes('Guests: 120'));
+
+  res = await handler(request('POST', TOKEN, { answers: { guestCount: 95 } }));
+  assert.equal(store['abc-123'].planning.answers.guestCount, 95);
+
+  res = await handler(request('POST', TOKEN, { answers: { guestCount: '' } }));
+  assert.equal(res.statusCode, 200);
+  assert.equal(store['abc-123'].planning.answers.guestCount, undefined, 'blank clears it');
+
+  for (const bad of ['lots', '12.5', '0', '5001', '-3', true]) {
+    const r = await handler(request('POST', TOKEN, { answers: { guestCount: bad } }));
+    assert.equal(r.statusCode, 400, JSON.stringify(bad));
+  }
+  assert.equal((await handler(request('POST', TOKEN, { answers: { playIfPossible: [] } }))).statusCode, 400, 'play if possible is gone');
 });

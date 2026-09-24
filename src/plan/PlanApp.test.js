@@ -97,19 +97,22 @@ test('greets the client by first name with their event details and wedding-only 
   expect(await screen.findByRole('heading', { name: "Hi Aoife, let's plan your wedding" })).toBeInTheDocument();
   expect(screen.getByText(/Friday 12 June 2099 · Galgorm Resort · Full night/)).toBeInTheDocument();
   expect(screen.getByRole('group', { name: 'First dance' })).toBeInTheDocument();
-  expect(screen.getByRole('group', { name: 'Play if possible' })).toBeInTheDocument();
+  expect(screen.queryByRole('group', { name: 'Play if possible' })).not.toBeInTheDocument();
   expect(screen.getByLabelText('Speeches')).toBeInTheDocument();
+  expect(screen.getByLabelText('Meal served')).toBeInTheDocument();
+  expect(screen.getByLabelText('Number of guests')).toHaveValue(150);
   expect(screen.getAllByLabelText('Search for a song')).toHaveLength(1);
   expect(screen.getByLabelText('Adding to')).toHaveValue('mustPlay');
   expect(screen.getByRole('button', { name: 'Send us your details' })).toBeDisabled();
 });
 
-test('a corporate event hides the wedding-only fields and lists', async () => {
+test('a corporate event keeps the meal time but hides the wedding-only fields and lists', async () => {
   current = view({ eventType: 'corporate', eventTypeLabel: 'corporate event', weddingPackage: null });
   visit(`/plan/${TOKEN}`);
   await screen.findByRole('heading', { name: "Hi Aoife, let's plan your corporate event" });
   expect(screen.queryByRole('group', { name: 'First dance' })).not.toBeInTheDocument();
   expect(screen.queryByLabelText('Speeches')).not.toBeInTheDocument();
+  expect(screen.getByLabelText('Meal served')).toBeInTheDocument();
   expect(screen.getByRole('group', { name: 'Last song of the night' })).toBeInTheDocument();
   expect(within(screen.getByLabelText('Adding to')).queryByRole('option', { name: /First dance/ })).not.toBeInTheDocument();
 });
@@ -417,4 +420,32 @@ test('the search target falls back when the chosen list is typed-in text', async
   expect(screen.getByLabelText('Adding to')).toHaveValue('firstDance');
   expect(within(screen.getByLabelText('Adding to')).getByRole('option', { name: 'Must play (typed in)' })).toBeDisabled();
   expect(picker('Must play').getByLabelText('Must play')).toHaveValue('Mr Brightside\nDancing Queen');
+});
+
+test('a party asks only for set-up, arrival, start and finish times', async () => {
+  current = view({ eventType: 'private', eventTypeLabel: 'event', weddingPackage: null });
+  visit(`/plan/${TOKEN}`);
+  await screen.findByLabelText('Search for a song');
+  for (const label of ['When can we get in to set up?', 'Guests arrive', 'DJ starts', 'Music must finish by', 'Number of guests']) {
+    expect(screen.getByLabelText(label)).toBeInTheDocument();
+  }
+  expect(screen.queryByLabelText('Meal served')).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Speeches')).not.toBeInTheDocument();
+});
+
+test('the guest count starts from the enquiry, is editable, and a saved value wins over the enquiry', async () => {
+  const { unmount } = visit(`/plan/${TOKEN}`);
+  const guests = await screen.findByLabelText('Number of guests');
+  expect(guests).toHaveValue(150);
+  expect(screen.getByRole('button', { name: 'Send us your details' })).toBeDisabled();
+
+  fireEvent.change(guests, { target: { value: '120' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send us your details' }));
+  await waitFor(() => expect(posts).toHaveLength(1));
+  expect(posts[0].answers.guestCount).toBe('120');
+
+  unmount();
+  current = view({ answers: { guestCount: 95 }, submittedAt: 'x', updatedAt: 'x' });
+  visit(`/plan/${TOKEN}`);
+  expect(await screen.findByLabelText('Number of guests')).toHaveValue(95);
 });

@@ -270,11 +270,15 @@ picked up the timings.
   answers and linking to the booking. A failed email never fails the save.
 - The form locks when the event is 3 days away or closer (423 on save; the page
   shows it read-only). No date means no lock.
-- Fields: set-up access, guest arrival, meal, speeches (wedding), DJ start, finish;
-  first dance and parent dances (wedding), last song, must play, do not play,
-  music style, announcements; venue contact name and phone, access notes; anything
-  else. Defined once in `src/shared/format.js` for the UI and once in the Lambda
-  for validation.
+- Fields: number of guests (prefilled from the enquiry, editable; the client's
+  number then wins in the admin view, email and calendar), set-up access, guest
+  arrival, meal (weddings and corporate only), speeches (wedding), DJ start,
+  finish; first dance and parent dances (wedding), last song, must play, do not
+  play, music style, announcements; venue contact name and phone, access notes;
+  anything else. Each field can carry `eventTypes` to limit which kinds of event
+  show it. Defined once in `src/shared/format.js` for the UI and once in the
+  Lambda for validation. A "play if possible" list existed briefly and was
+  removed at Daniel's request.
 - Admin detail view gains a "Planning form" card: the link with copy and "New
   link", or a "Create planning link" button, then the client's answers once they
   exist. The calendar feed adds the timings, first dance and venue contact to each

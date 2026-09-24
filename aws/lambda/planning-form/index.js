@@ -26,13 +26,15 @@ const ADMIN_URL = 'https://perfecteventsni.com/admin';
 const LOCK_DAYS_BEFORE = 3;
 
 // Every field the form can save. Anything else in the body is rejected.
-//   time:  HH:MM, 24-hour
-//   short: single line
-//   long:  free text
-//   songs: a list of song records picked from the catalogue (or typed in), up
+//   time:   HH:MM, 24-hour
+//   number: a whole number (guest count)
+//   short:  single line
+//   long:   free text
+//   songs:  a list of song records picked from the catalogue (or typed in), up
 //          to `max` of them. A plain string is still accepted for these, which
 //          is how forms filled in before the song picker existed were saved.
 const FIELDS = {
+  guestCount: { type: 'number', min: 1, max: 5000 },
   setupAccessTime: { type: 'time' },
   guestArrivalTime: { type: 'time' },
   mealTime: { type: 'time' },
@@ -43,7 +45,6 @@ const FIELDS = {
   parentDances: { type: 'songs', max: 5, textMax: 200 },
   lastSong: { type: 'songs', max: 1, textMax: 200 },
   mustPlay: { type: 'songs', max: 100, textMax: 3000 },
-  playIfPossible: { type: 'songs', max: 100, textMax: 3000 },
   doNotPlay: { type: 'songs', max: 100, textMax: 3000 },
   musicStyle: { type: 'long' },
   announcements: { type: 'long' },
@@ -173,6 +174,18 @@ const parseAnswers = (body) => {
     if (spec.type === 'songs') {
       const songs = parseSongs(raw, key, spec);
       if (songs !== undefined) clean[key] = songs;
+      continue;
+    }
+
+    if (spec.type === 'number') {
+      const text = typeof raw === 'number' ? String(raw) : typeof raw === 'string' ? raw.trim() : null;
+      if (text === null) throw new HttpError(400, `${key} must be a number`);
+      if (text === '') continue;
+      const n = Number(text);
+      if (!Number.isInteger(n) || n < spec.min || n > spec.max) {
+        throw new HttpError(400, `${key} must be a whole number between ${spec.min} and ${spec.max}`);
+      }
+      clean[key] = n;
       continue;
     }
 
@@ -322,6 +335,7 @@ const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
 
 const FIELD_LABELS = {
+  guestCount: 'Guests',
   setupAccessTime: 'Set-up access from',
   guestArrivalTime: 'Guests arrive',
   mealTime: 'Meal served',
@@ -332,7 +346,6 @@ const FIELD_LABELS = {
   parentDances: 'Parent dances',
   lastSong: 'Last song',
   mustPlay: 'Must play',
-  playIfPossible: 'Play if possible',
   doNotPlay: 'Do not play',
   musicStyle: 'Music style',
   announcements: 'Announcements',
@@ -349,8 +362,8 @@ const notifyBusiness = async (booking, firstSubmission) => {
   const link = `${ADMIN_URL}/${booking.id}`;
   const answers = booking.planning?.answers || {};
 
-  const asText = (key) => (FIELDS[key].type === 'songs' ? songsToText(answers[key]) : answers[key]);
-  const answered = Object.keys(FIELDS).filter((key) => answers[key] && asText(key));
+  const asText = (key) => (FIELDS[key].type === 'songs' ? songsToText(answers[key]) : String(answers[key] ?? ''));
+  const answered = Object.keys(FIELDS).filter((key) => answers[key] !== undefined && answers[key] !== null && answers[key] !== '' && asText(key));
   const rows = answered
     .map((key) => `<tr><td style="padding:6px 12px 6px 0;color:#666;vertical-align:top;white-space:nowrap">${esc(FIELD_LABELS[key])}</td><td style="padding:6px 0">${esc(asText(key)).replace(/\n/g, '<br>')}</td></tr>`)
     .join('');

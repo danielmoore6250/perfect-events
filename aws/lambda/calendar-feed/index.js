@@ -104,7 +104,9 @@ const describe = (b) => {
   if (event.type === 'wedding' && event.weddingPackage) {
     lines.push(`Package: ${WEDDING_PACKAGE_LABELS[event.weddingPackage] || event.weddingPackage}`);
   }
-  if (event.guestCount) lines.push(`Guests: ${event.guestCount}`);
+  // The client's own guest count from the planning form wins over the enquiry.
+  const guests = b.planning?.answers?.guestCount || event.guestCount;
+  if (guests) lines.push(`Guests: ${guests}`);
 
   const quote = formatMoney(pricing.quote);
   if (quote) {

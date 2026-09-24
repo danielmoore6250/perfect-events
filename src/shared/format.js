@@ -40,13 +40,14 @@ export const formatDateTime = (iso) => {
 // before the picker existed, plain text).
 export const PLANNING_SECTIONS = [
   {
-    title: 'Timings',
+    title: 'Timings and guests',
     hint: 'Rough times are fine. We plan the night around these.',
     fields: [
+      { key: 'guestCount', label: 'Number of guests', type: 'number', placeholder: 'Roughly' },
       { key: 'setupAccessTime', label: 'When can we get in to set up?', type: 'time' },
       { key: 'guestArrivalTime', label: 'Guests arrive', type: 'time' },
-      { key: 'mealTime', label: 'Meal served', type: 'time' },
-      { key: 'speechesTime', label: 'Speeches', type: 'time', weddingOnly: true },
+      { key: 'mealTime', label: 'Meal served', type: 'time', eventTypes: ['wedding', 'corporate'] },
+      { key: 'speechesTime', label: 'Speeches', type: 'time', eventTypes: ['wedding'] },
       { key: 'djStartTime', label: 'DJ starts', type: 'time' },
       { key: 'finishTime', label: 'Music must finish by', type: 'time' }
     ]
@@ -55,11 +56,10 @@ export const PLANNING_SECTIONS = [
     title: 'Music',
     hint: 'Search for songs and add them. Anything under "do not play" stays off, no exceptions.',
     fields: [
-      { key: 'firstDance', label: 'First dance', type: 'songs', max: 1, weddingOnly: true },
-      { key: 'parentDances', label: 'Parent dances (if any)', type: 'songs', max: 5, weddingOnly: true },
+      { key: 'firstDance', label: 'First dance', type: 'songs', max: 1, eventTypes: ['wedding'] },
+      { key: 'parentDances', label: 'Parent dances (if any)', type: 'songs', max: 5, eventTypes: ['wedding'] },
       { key: 'lastSong', label: 'Last song of the night', type: 'songs', max: 1 },
       { key: 'mustPlay', label: 'Must play', type: 'songs', max: 100, allowImport: true, hint: 'The ones the night is not complete without.' },
-      { key: 'playIfPossible', label: 'Play if possible', type: 'songs', max: 100, allowImport: true, hint: "Songs you'd love to hear if they fit the room." },
       { key: 'doNotPlay', label: 'Do not play', type: 'songs', max: 100, allowImport: true },
       { key: 'musicStyle', label: 'What gets your crowd going?', type: 'long', placeholder: 'Eras, genres, artists, the vibe you want' },
       { key: 'announcements', label: 'Anything to announce?', type: 'long', placeholder: 'Cake cutting, toasts, a birthday in the room' }
@@ -79,6 +79,10 @@ export const PLANNING_SECTIONS = [
     fields: [{ key: 'extraNotes', label: 'Anything else we should know?', type: 'long' }]
   }
 ];
+
+// Whether a field is shown for this kind of event. Fields with no eventTypes
+// apply to every event.
+export const fieldApplies = (field, eventType) => !field.eventTypes || field.eventTypes.includes(eventType);
 
 export const PLANNING_FIELDS = PLANNING_SECTIONS.flatMap((section) => section.fields);
 
