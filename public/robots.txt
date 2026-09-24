@@ -2,5 +2,6 @@
 User-agent: *
 Allow: /
 Disallow: /admin
+Disallow: /plan
 
 Sitemap: https://perfecteventsni.com/sitemap.xml

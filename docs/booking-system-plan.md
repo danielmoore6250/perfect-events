@@ -206,9 +206,10 @@ Tests: `npm test` in the Lambda directory, 22 cases, run in PR checks.
   fields are sent. Balance due is shown from quote minus deposit.
 - `robots.txt` disallows `/admin`.
 
-## Phase 3 — calendar feed (code complete, not deployed)
+## Phase 3 — calendar feed (deployed 2026-09-24)
 
-Branch `bookings-phase-3`.
+Deployed and verified: the live feed served the test booking once it was moved
+to Booked, and parsed cleanly with ical.js.
 
 ### How it works
 
@@ -241,16 +242,55 @@ Tests: 16 for the calendar Lambda, 25 for the admin Lambda, 13 React cases.
 3. Move a booking to Booked and confirm it appears in the calendar after the
    next refresh (calendar apps poll on their own schedule, often hourly).
 
-## Phase 4 — client planning form
+## Phase 4 — client planning form (code complete, not deployed)
 
-- On `booked`, generate `planningToken` (cryptographically random, ≥128 bits).
-- Public routes `GET /plan/{token}` and `POST /plan/{token}`: the GET returns only
-  that booking's non-sensitive fields to prefill the page, the POST saves answers
-  and emails a notification. Allow saving and returning; consider locking edits a
-  few days before the event.
-- React route `/plan/:token` replacing the plain-text email form: timings, first
-  dance, must-play, do-not-play, venue contact, equipment access notes.
-- Answers appear in the admin detail view.
+Branch `bookings-phase-4`.
+
+### How it works
+
+- A booking gets `planningToken` (192 random bits) the moment its stage becomes
+  `booked`, via `if_not_exists` so an existing link is never replaced. The admin
+  can also create or regenerate one with `POST /admin/bookings/{id}/planning-link`
+  (`{ "regenerate": true }` to replace). New sparse GSI `ByPlanningToken`.
+- The client link is `perfecteventsni.com/plan/<token>`, served by `src/plan/PlanApp.js`
+  (lazy-loaded from `src/index.js`, no sign-in). It calls
+  `aws/lambda/planning-form` on `GET`/`POST /plan/{token}`.
+- `GET` returns only what the client needs: their name, the event date and type,
+  package, venue, guest count, their own previous answers, and a `locked` flag.
+  No phone, email, pricing, notes, history or token.
+- `POST { answers }` validates every field against a fixed list (times as HH:MM,
+  short text ≤200, long text ≤3000; unknown keys rejected), saves `planning =
+  { answers, submittedAt, updatedAt }`, and on the first submission moves a
+  `booked` or `details-requested` booking to `details-received` with a history
+  entry by `client-planning-form`. The write is conditional on the token still
+  matching, so a regenerated link cannot be overwritten by an old page.
+- The business gets an email on every save (received vs updated) listing the
+  answers and linking to the booking. A failed email never fails the save.
+- The form locks when the event is 3 days away or closer (423 on save; the page
+  shows it read-only). No date means no lock.
+- Fields: set-up access, guest arrival, meal, speeches (wedding), DJ start, finish;
+  first dance and parent dances (wedding), last song, must play, do not play,
+  music style, announcements; venue contact name and phone, access notes; anything
+  else. Defined once in `src/shared/format.js` for the UI and once in the Lambda
+  for validation.
+- Admin detail view gains a "Planning form" card: the link with copy and "New
+  link", or a "Create planning link" button, then the client's answers once they
+  exist. The calendar feed adds the timings, first dance and venue contact to each
+  event's description. Events stay all-day, which reads best in a day view.
+- `robots.txt` disallows `/plan`.
+
+Tests: 15 planning Lambda, 29 admin Lambda, 17 calendar Lambda, 8 React cases for
+the planning page (`src/plan/PlanApp.test.js`) and 15 for the admin screen.
+
+### To deploy and try
+
+1. Merge the PR, run the Deploy workflow. The table gains a second index; CloudFormation
+   builds it in the background and the deploy waits for it.
+2. Open the test booking (already Booked). The Planning form card shows "Create
+   planning link" because it was booked before this deploy; press it.
+3. Copy the link, open it in a private window, fill in a few fields, send.
+4. Check: the booking is at Details received, the answers show in the admin
+   card, an email arrived, and the calendar event's description has the timings.
 
 ## Phase 5 — reminders and files
 

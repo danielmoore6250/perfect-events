@@ -4,17 +4,22 @@ import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 
-// Two client-side routes only: the public site, and /admin. CloudFront serves
-// index.html for unknown paths, so a direct visit to /admin lands here too.
-const isAdminRoute = /^\/admin(\/|$)/.test(window.location.pathname);
-const AdminApp = isAdminRoute ? React.lazy(() => import('./admin/AdminApp')) : null;
+// Three client-side routes: the public site, /admin, and the client planning
+// page at /plan/<token>. CloudFront serves index.html for unknown paths, so a
+// direct visit to either lands here too.
+const path = window.location.pathname;
+const Page = /^\/admin(\/|$)/.test(path)
+  ? React.lazy(() => import('./admin/AdminApp'))
+  : /^\/plan(\/|$)/.test(path)
+    ? React.lazy(() => import('./plan/PlanApp'))
+    : null;
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>
-    {AdminApp ? (
+    {Page ? (
       <React.Suspense fallback={null}>
-        <AdminApp />
+        <Page />
       </React.Suspense>
     ) : (
       <App />

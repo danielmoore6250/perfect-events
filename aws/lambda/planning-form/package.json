@@ -1,0 +1,16 @@
+{
+  "name": "planning-form",
+  "version": "1.0.0",
+  "description": "Public planning form for booked clients: read and save event details by private token",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test test/handler.test.js"
+  },
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1137.0",
+    "@aws-sdk/client-sesv2": "^3.1094.0",
+    "@aws-sdk/lib-dynamodb": "^3.1137.0"
+  }
+}

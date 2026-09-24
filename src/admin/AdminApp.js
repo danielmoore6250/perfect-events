@@ -4,7 +4,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import '../styles/Admin.css';
 import { getSession, signIn, completeNewPassword, forgotPassword, confirmForgotPassword, clearSession } from './auth';
-import { listBookings, getBooking, updateBooking, getCalendarLink, rotateCalendarLink, calendarFeedUrl } from './api';
+import { listBookings, getBooking, updateBooking, getCalendarLink, rotateCalendarLink, calendarFeedUrl, createPlanningLink, planningFormUrl } from './api';
+import { EVENT_TYPE_LABELS, WEDDING_PACKAGE_LABELS, labelFor, formatEventDate, formatDateTime, PLANNING_SECTIONS, PLANNING_FIELD_LABELS } from '../shared/format';
 
 const STATUSES = [
   { value: 'enquiry', label: 'Enquiry' },
@@ -18,19 +19,6 @@ const STATUSES = [
 const CLOSED_STATUSES = new Set(['completed', 'lost']);
 const statusLabel = (value) => STATUSES.find((s) => s.value === value)?.label || value || 'Unknown';
 
-const EVENT_TYPE_LABELS = {
-  wedding: 'Wedding',
-  private: 'Private event',
-  corporate: 'Corporate event',
-  'pa-hire': 'PA hire'
-};
-const WEDDING_PACKAGE_LABELS = {
-  'full-night': 'Full night',
-  'after-band': 'After band',
-  'not-sure': 'Not sure yet'
-};
-const labelFor = (labels, value, fallback = 'Not specified') => (value ? labels[value] || value : fallback);
-
 // Today in the admin's own timezone: toISOString() would give UTC, which is
 // yesterday for an hour every night during British Summer Time.
 const todayIso = () => {
@@ -39,24 +27,6 @@ const todayIso = () => {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 };
 
-const formatEventDate = (iso, { long = false } = {}) => {
-  if (!iso || iso === 'unknown') return 'Date TBC';
-  const date = new Date(`${iso}T12:00:00`);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleDateString('en-GB', {
-    weekday: long ? 'long' : 'short',
-    day: 'numeric',
-    month: long ? 'long' : 'short',
-    year: 'numeric'
-  });
-};
-
-const formatDateTime = (iso) => {
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime())
-    ? iso
-    : date.toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-};
 
 const formatMoney = (amount) =>
   typeof amount === 'number' ? `£${amount.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
@@ -387,6 +357,97 @@ const changesBetween = (original, form) => {
   return changes;
 };
 
+// The client's planning link and, once they have filled it in, their answers.
+function PlanningCard({ booking, onBookingChange, onAuthLost }) {
+  const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const url = booking.planningToken ? planningFormUrl(booking.planningToken) : null;
+  const answers = booking.planning?.answers || {};
+  const answered = PLANNING_SECTIONS.flatMap((s) => s.fields).filter((f) => answers[f.key]);
+  const isWedding = booking.event?.type === 'wedding';
+
+  const run = async (fn) => {
+    setError('');
+    setBusy(true);
+    try {
+      onBookingChange(await fn());
+    } catch (err) {
+      if (err.status === 401) return onAuthLost();
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setError('Could not copy. Select the link and copy it by hand.');
+    }
+  };
+
+  const regenerate = () => {
+    if (!window.confirm('Create a new planning link? The one the client already has will stop working.')) return;
+    run(() => createPlanningLink(booking.id, { regenerate: true }));
+  };
+
+  return (
+    <div className="card">
+      <h2 className="card__title">Planning form</h2>
+
+      {url ? (
+        <>
+          <p className="calendar__url"><code>{url}</code></p>
+          <div className="detail__actions">
+            <button type="button" className="button" onClick={copy}>{copied ? 'Copied' : 'Copy link'}</button>
+            <button type="button" className="button button--link" onClick={regenerate} disabled={busy}>New link</button>
+          </div>
+          <p className="muted small">Send this to the client. They fill in timings, music and venue details and can come back to edit until three days before the event.</p>
+        </>
+      ) : (
+        <>
+          <p className="muted small">No link yet. One is created automatically when the booking moves to Booked, or make one now.</p>
+          <button type="button" className="button" onClick={() => run(() => createPlanningLink(booking.id))} disabled={busy}>
+            {busy ? 'Working…' : 'Create planning link'}
+          </button>
+        </>
+      )}
+
+      {error && <p className="notice notice--error" role="alert">{error}</p>}
+
+      {booking.planning?.submittedAt ? (
+        <div className="planning">
+          <p className="muted small">
+            Filled in {formatDateTime(booking.planning.submittedAt)}
+            {booking.planning.updatedAt !== booking.planning.submittedAt && `, last changed ${formatDateTime(booking.planning.updatedAt)}`}
+          </p>
+          {answered.length === 0 ? (
+            <p className="muted">They saved the form without any answers.</p>
+          ) : (
+            <dl className="facts facts--stacked">
+              {answered
+                .filter((f) => !f.weddingOnly || isWedding)
+                .map((f) => (
+                  <div key={f.key} className="planning__item">
+                    <dt>{PLANNING_FIELD_LABELS[f.key]}</dt>
+                    <dd className="prewrap">{answers[f.key]}</dd>
+                  </div>
+                ))}
+            </dl>
+          )}
+        </div>
+      ) : (
+        url && <p className="muted small">Not filled in yet.</p>
+      )}
+    </div>
+  );
+}
+
 function BookingDetail({ id, onBack, onAuthLost }) {
   const [booking, setBooking] = useState(null);
   const [form, setForm] = useState(null);
@@ -497,6 +558,8 @@ function BookingDetail({ id, onBack, onAuthLost }) {
               <p className="prewrap">{booking.message}</p>
             </div>
           )}
+
+          <PlanningCard booking={booking} onBookingChange={apply} onAuthLost={onAuthLost} />
 
           <div className="card">
             <h2 className="card__title">History</h2>

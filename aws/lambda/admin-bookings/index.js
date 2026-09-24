@@ -7,6 +7,8 @@
 //   GET   /admin/bookings          every booking, oldest event date first
 //   GET   /admin/bookings/{id}     one booking
 //   PATCH /admin/bookings/{id}     update status, eventDate, pricing and notes
+//   POST  /admin/bookings/{id}/planning-link  give the booking a client planning
+//                                  link (or replace it with { "regenerate": true })
 //   GET   /admin/calendar          the calendar feed token (created on first use)
 //   POST  /admin/calendar/rotate   replace the token, invalidating the old feed URL
 
@@ -228,6 +230,14 @@ const updateBooking = async (id, changes, actor, expectedUpdatedAt) => {
     values[':emptyList'] = [];
     sets.push('#status = :status');
     sets.push('#statusHistory = list_append(if_not_exists(#statusHistory, :emptyList), :historyEntry)');
+
+    // Reaching 'booked' is when the client gets their planning link, so make
+    // sure one exists. Never replaces a link that is already out there.
+    if (changes.status === 'booked') {
+      names['#planningToken'] = 'planningToken';
+      values[':planningToken'] = newToken();
+      sets.push('#planningToken = if_not_exists(#planningToken, :planningToken)');
+    }
   }
 
   for (const field of ['eventDate', 'notes', 'pricing']) {
@@ -261,8 +271,30 @@ const updateBooking = async (id, changes, actor, expectedUpdatedAt) => {
   }
 };
 
-// 192 random bits, URL-safe. Long enough that the feed URL cannot be guessed.
-const newCalendarToken = () => crypto.randomBytes(24).toString('base64url');
+// 192 random bits, URL-safe. Long enough that a URL cannot be guessed.
+const newToken = () => crypto.randomBytes(24).toString('base64url');
+const newCalendarToken = newToken;
+
+// Gives a booking its planning link. Creates one if missing; with regenerate
+// the old link stops working. Returns the updated booking.
+const setPlanningLink = async (id, { regenerate = false } = {}) => {
+  await getBooking(id);
+  const now = new Date().toISOString();
+  const { Attributes } = await docClient.send(
+    new UpdateCommand({
+      TableName: BOOKINGS_TABLE,
+      Key: { id },
+      UpdateExpression: regenerate
+        ? 'SET #planningToken = :token, #updatedAt = :now'
+        : 'SET #planningToken = if_not_exists(#planningToken, :token), #updatedAt = :now',
+      ConditionExpression: 'attribute_exists(id)',
+      ExpressionAttributeNames: { '#planningToken': 'planningToken', '#updatedAt': 'updatedAt' },
+      ExpressionAttributeValues: { ':token': newToken(), ':now': now },
+      ReturnValues: 'ALL_NEW'
+    })
+  );
+  return Attributes;
+};
 
 const calendarView = (item) => ({
   token: item.calendarToken,
@@ -347,6 +379,12 @@ exports.handler = async (event) => {
 
     if (method === 'POST' && path === '/admin/calendar/rotate') {
       return respond(200, { calendar: await rotateCalendarToken(actorFrom(event)) });
+    }
+
+    if (id && method === 'POST' && path === `/admin/bookings/${id}/planning-link`) {
+      const body = parseBody(event);
+      const booking = await setPlanningLink(id, { regenerate: body.regenerate === true });
+      return respond(200, { booking });
     }
 
     if (id && path === `/admin/bookings/${id}`) {
