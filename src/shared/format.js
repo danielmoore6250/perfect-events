@@ -62,7 +62,7 @@ export const PLANNING_SECTIONS = [
   },
   {
     title: 'Party music',
-    hint: 'Already have a playlist? Paste the link first. Then add the songs that matter most. Anything under "do not play" stays off, no exceptions.',
+    hint: 'Already have a playlist of your must play tracks? Paste the link.\nOR add the songs below.\nDon\'t forget your do not play list. That is just as important.',
     fields: [
       { key: 'playlistLinks', label: 'Playlists you love', type: 'links', max: 10, hint: 'Paste a Spotify, Apple Music, Deezer or YouTube playlist link. We open it in our own account.' },
       { key: 'mustPlay', label: 'Must play', type: 'songs', max: 100, allowImport: true, hint: 'The ones the night is not complete without.' },
