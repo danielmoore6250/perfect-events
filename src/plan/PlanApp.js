@@ -8,6 +8,7 @@ import { API_BASE } from '../config';
 import { PLANNING_SECTIONS, PLANNING_FIELDS, fieldApplies, WEDDING_PACKAGE_LABELS, formatDateTime } from '../shared/format';
 import MusicPlanner from './MusicPlanner';
 import DancePlanner from './DancePlanner';
+import TimeSelect from './TimeSelect';
 import { stopPreview } from '../shared/preview';
 
 const tokenFromPath = () => {
@@ -206,7 +207,7 @@ export default function PlanApp() {
                     {f.type === 'long' ? (
                       <textarea rows={4} value={answers[f.key]} onChange={set(f.key)} placeholder={f.placeholder} maxLength={3000} />
                     ) : f.type === 'time' ? (
-                      <input type="time" value={answers[f.key]} onChange={set(f.key)} />
+                      <TimeSelect value={answers[f.key]} onChange={set(f.key)} />
                     ) : f.type === 'number' ? (
                       <input type="number" inputMode="numeric" min="1" max="5000" step="1" value={answers[f.key]} onChange={set(f.key)} placeholder={f.placeholder} />
                     ) : (

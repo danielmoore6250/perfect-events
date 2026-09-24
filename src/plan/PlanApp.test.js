@@ -546,3 +546,22 @@ test('playlists come before the song search, and the old free-text boxes fold in
   expect(screen.queryByLabelText('What gets your crowd going?')).not.toBeInTheDocument();
   expect(screen.queryByLabelText('Anything to announce?')).not.toBeInTheDocument();
 });
+
+test('times are picked from a quarter-hour list, and an odd saved time is still offered', async () => {
+  current = view({ answers: { djStartTime: '19:20' }, submittedAt: 'x', updatedAt: 'x' });
+  visit(`/plan/${TOKEN}`);
+  const dj = await screen.findByLabelText('DJ starts');
+  expect(dj.tagName).toBe('SELECT');
+  expect(dj).toHaveValue('19:20');
+  const values = Array.from(dj.options).map((o) => o.value);
+  expect(values).toContain('19:15');
+  expect(values).toContain('19:20');
+  expect(values).toContain('19:30');
+  expect(values).not.toContain('19:25');
+  expect(values.filter(Boolean)).toHaveLength(97);
+
+  const finish = screen.getByLabelText('Music must finish by');
+  expect(Array.from(finish.options).map((o) => o.value).filter(Boolean)).toHaveLength(96);
+  fireEvent.change(finish, { target: { value: '00:45' } });
+  expect(finish).toHaveValue('00:45');
+});

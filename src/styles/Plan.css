@@ -118,3 +118,6 @@ a.song__title:hover { text-decoration: underline; }
 .finder .music__input { align-self: stretch; width: 100%; }
 .finder__manual { align-self: flex-start; padding: 0; font-size: 13px; }
 .finder--compact .music__input input { padding-top: 9px; padding-bottom: 9px; }
+
+/* Time selects share the field look; hide the native arrow's extra padding on iOS. */
+.plan__grid select { min-height: 44px; }
