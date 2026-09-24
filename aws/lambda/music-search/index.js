@@ -3,6 +3,13 @@
 //   GET /music/search?q=perfect            up to 25 matching songs
 //   GET /music/playlist?url=<link>         every track in a public playlist
 //   GET /music/preview?source=&id=         302 to a fresh 30-second preview
+//   GET /music/link?url=<playlist link>    title and cover for a shared playlist
+//                                          link (Spotify, Apple Music, Deezer,
+//                                          YouTube) via each service's public
+//                                          embed-info endpoint. Spotify no longer
+//                                          lets an app read a playlist's tracks,
+//                                          but the link itself is enough for the
+//                                          DJ to open it in their own account.
 //
 // Previews are never played from a stored link: Deezer signs its preview URLs
 // and they expire within minutes, so a link saved with a booking is dead by
@@ -241,6 +248,63 @@ const search = async (query, limit) => {
   return result;
 };
 
+// ---- Shared playlist links ---------------------------------------------------
+
+// Only real playlist links: albums, single tracks and standalone videos are
+// refused, since the point is a list the couple has put together.
+const LINK_PROVIDERS = [
+  { provider: 'spotify', label: 'Spotify', hosts: /(^|\.)spotify\.com$/, isPlaylist: (u) => /^\/(?:intl-[a-z]+\/)?playlist\/[A-Za-z0-9]+\/?$/.test(u.pathname), oembed: (u) => `https://open.spotify.com/oembed?url=${encodeURIComponent(u.href)}` },
+  { provider: 'apple', label: 'Apple Music', hosts: /(^|\.)music\.apple\.com$/, isPlaylist: (u) => /\/playlist\/(?:[^/]+\/)?pl\.[A-Za-z0-9._-]+\/?$/.test(u.pathname), oembed: null },
+  { provider: 'deezer', label: 'Deezer', hosts: /(^|\.)deezer\.com$/, isPlaylist: (u) => /\/playlist\/\d+\/?$/.test(u.pathname), oembed: (u) => `${DEEZER_API}/oembed?url=${encodeURIComponent(u.href)}&format=json` },
+  { provider: 'youtube', label: 'YouTube', hosts: /(^|\.)(youtube\.com|music\.youtube\.com)$/, isPlaylist: (u) => /^\/playlist\/?$/.test(u.pathname) && /^[A-Za-z0-9_-]+$/.test(u.searchParams.get('list') || ''), oembed: (u) => `https://www.youtube.com/oembed?url=${encodeURIComponent(u.href)}&format=json` }
+];
+
+const cleanLink = (u) => {
+  // Drop tracking parameters; keep what identifies the playlist.
+  const keep = new URL(u.href);
+  for (const key of [...keep.searchParams.keys()]) {
+    if (key !== 'list') keep.searchParams.delete(key);
+  }
+  keep.hash = '';
+  return keep.href;
+};
+
+const linkInfo = async (rawUrl) => {
+  let link;
+  try {
+    link = new URL(rawUrl);
+  } catch {
+    throw new HttpError(400, 'That does not look like a link');
+  }
+  if (link.protocol !== 'https:') throw new HttpError(400, 'Links must start with https://');
+  const match = LINK_PROVIDERS.find((p) => p.hosts.test(link.hostname));
+  if (!match) throw new HttpError(400, 'Paste a Spotify, Apple Music, Deezer or YouTube playlist link');
+  if (!match.isPlaylist(link)) throw new HttpError(400, `That ${match.label} link is not a playlist`);
+
+  const info = { provider: match.provider, providerLabel: match.label, url: cleanLink(link), title: null, thumbnail: null, importable: match.provider === 'deezer' || match.provider === 'apple' };
+
+  try {
+    if (match.oembed) {
+      const data = await fetchJson(match.oembed(link));
+      info.title = typeof data.title === 'string' ? data.title.slice(0, 200) : null;
+      info.thumbnail = typeof data.thumbnail_url === 'string' && data.thumbnail_url.startsWith('https://') ? data.thumbnail_url : null;
+    } else if (match.provider === 'apple') {
+      const token = await appleToken();
+      const id = applePlaylistId(link);
+      if (token && id) {
+        const data = await fetchJson(`${APPLE_API}/catalog/${APPLE_STOREFRONT}/playlists/${id}`, { Authorization: `Bearer ${token}` });
+        const a = data.data?.[0]?.attributes || {};
+        info.title = a.name ? String(a.name).slice(0, 200) : null;
+        info.thumbnail = appleArtwork(a.artwork, 400);
+      }
+    }
+  } catch (err) {
+    // A link without a title is still a link worth keeping.
+    console.error('Playlist link info failed:', err.message);
+  }
+  return info;
+};
+
 const previewCache = new Map();
 const freshPreviewUrl = async (source, id) => {
   const key = `${source}:${id}`;
@@ -322,6 +386,13 @@ exports.handler = async (event) => {
   const ip = event.requestContext?.http?.sourceIp || 'unknown';
 
   try {
+    if (path === '/music/link') {
+      if (!rateCheck(ip, 'search')) throw new HttpError(429, 'Slow down a little and try again in a minute.');
+      const url = String(params.url || '').trim();
+      if (!url) throw new HttpError(400, 'url is required');
+      return respond(200, await linkInfo(url));
+    }
+
     if (path === '/music/search' || path === '/music/playlist' || path === '/music/preview') {
       if (!rateCheck(ip, path === '/music/playlist' ? 'import' : 'search')) {
         throw new HttpError(429, 'Slow down a little and try again in a minute.');

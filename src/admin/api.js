@@ -47,3 +47,5 @@ export const calendarFeedUrl = (token) => `${API_BASE}/calendar/${token}.ics`;
 export const createPlanningLink = async (id, { regenerate = false } = {}) =>
   (await call('POST', `/admin/bookings/${encodeURIComponent(id)}/planning-link`, { regenerate })).booking;
 export const planningFormUrl = (token) => `${window.location.origin}/plan/${token}`;
+
+export const createBooking = async (fields) => (await call('POST', '/admin/bookings', fields)).booking;

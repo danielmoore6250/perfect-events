@@ -374,8 +374,7 @@ test('song lists are stored as song records with only the known keys', async () 
       answers: {
         firstDance: [song({ extra: 'dropped', durationMs: 263000.7 })],
         mustPlay: [song({ id: '1', title: 'Mr Brightside', artist: 'The Killers' }), { source: 'manual', title: 'Our song', artist: ' Nobody famous ' }],
-        playIfPossible: [song({ source: 'deezer', id: '9', title: 'Boston', artist: 'Augustana', album: null, artwork: null, previewUrl: null, url: null, durationMs: null })],
-        doNotPlay: []
+        doNotPlay: [song({ source: 'deezer', id: '9', title: 'Boston', artist: 'Augustana', album: null, artwork: null, previewUrl: null, url: null, durationMs: null })]
       }
     })
   );
@@ -386,13 +385,12 @@ test('song lists are stored as song records with only the known keys', async () 
   assert.deepEqual(saved.mustPlay[1], {
     source: 'manual', id: null, title: 'Our song', artist: 'Nobody famous', album: null, artwork: null, previewUrl: null, url: null, durationMs: null
   });
-  assert.equal(saved.playIfPossible[0].source, 'deezer');
-  assert.equal(saved.doNotPlay, undefined, 'an empty list is not stored');
+  assert.equal(saved.doNotPlay[0].source, 'deezer');
 
   const html = emails[0].Content.Simple.Body.Html.Data;
   assert.ok(html.includes('Ed Sheeran – Perfect'));
   assert.ok(html.includes('The Killers – Mr Brightside<br>Nobody famous – Our song'));
-  assert.ok(emails[0].Content.Simple.Body.Text.Data.includes('Play if possible: Augustana – Boston'));
+  assert.ok(emails[0].Content.Simple.Body.Text.Data.includes('Do not play: Augustana – Boston'));
 });
 
 test('song lists still accept the plain text that older forms saved', async () => {
@@ -432,4 +430,125 @@ test('songsToText renders records and passes legacy text through', () => {
   assert.equal(songsToText([song(), { source: 'manual', title: 'Untitled', artist: '' }]), 'Ed Sheeran – Perfect\nUntitled');
   assert.equal(songsToText('typed in'), 'typed in');
   assert.equal(songsToText(undefined), '');
+});
+
+test('an empty song list is not stored', async () => {
+  const { handler } = loadModule();
+  await handler(request('POST', TOKEN, { answers: { doNotPlay: [], lastSong: 'X' } }));
+  assert.equal(store['abc-123'].planning.answers.doNotPlay, undefined);
+});
+
+test('guest count is stored as a whole number and shown in the email', async () => {
+  const { handler } = loadModule();
+  let res = await handler(request('POST', TOKEN, { answers: { guestCount: ' 120 ' } }));
+  assert.equal(res.statusCode, 200);
+  assert.equal(store['abc-123'].planning.answers.guestCount, 120);
+  assert.ok(emails[0].Content.Simple.Body.Text.Data.includes('Guests: 120'));
+
+  res = await handler(request('POST', TOKEN, { answers: { guestCount: 95 } }));
+  assert.equal(store['abc-123'].planning.answers.guestCount, 95);
+
+  res = await handler(request('POST', TOKEN, { answers: { guestCount: '' } }));
+  assert.equal(res.statusCode, 200);
+  assert.equal(store['abc-123'].planning.answers.guestCount, undefined, 'blank clears it');
+
+  for (const bad of ['lots', '12.5', '0', '5001', '-3', true]) {
+    const r = await handler(request('POST', TOKEN, { answers: { guestCount: bad } }));
+    assert.equal(r.statusCode, 400, JSON.stringify(bad));
+  }
+  assert.equal((await handler(request('POST', TOKEN, { answers: { playIfPossible: [] } }))).statusCode, 400, 'play if possible is gone');
+});
+
+test('shared playlist links are stored with only the known keys and listed in the email', async () => {
+  const { handler } = loadModule();
+  const res = await handler(
+    request('POST', TOKEN, {
+      answers: {
+        playlistLinks: [
+          { url: 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M', provider: 'spotify', title: 'Our wedding vibes', thumbnail: 'https://i.scdn.co/image/abc', importable: false, extra: 'dropped' },
+          { url: 'https://www.youtube.com/playlist?list=PLabc', provider: 'youtube', title: null, thumbnail: null }
+        ]
+      }
+    })
+  );
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(store['abc-123'].planning.answers.playlistLinks, [
+    { url: 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M', provider: 'spotify', title: 'Our wedding vibes', thumbnail: 'https://i.scdn.co/image/abc' },
+    { url: 'https://www.youtube.com/playlist?list=PLabc', provider: 'youtube', title: null, thumbnail: null }
+  ]);
+  const text = emails[0].Content.Simple.Body.Text.Data;
+  assert.ok(text.includes('Playlists: Our wedding vibes (Spotify) https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M\nPlaylist (YouTube) https://www.youtube.com/playlist?list=PLabc'));
+  const html = emails[0].Content.Simple.Body.Html.Data;
+  assert.ok(html.includes('Our wedding vibes (Spotify) https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M'));
+});
+
+test('playlist links are validated', async () => {
+  const { handler } = loadModule();
+  const bad = [
+    [{ playlistLinks: 'https://open.spotify.com/playlist/x' }, /must be a list of links/],
+    [{ playlistLinks: ['https://open.spotify.com/playlist/x'] }, /entries must be links/],
+    [{ playlistLinks: [{ url: 'http://open.spotify.com/playlist/x', provider: 'spotify' }] }, /Spotify, Apple Music, Deezer or YouTube/],
+    [{ playlistLinks: [{ url: 'https://example.com/playlist/x', provider: 'spotify' }] }, /Spotify, Apple Music, Deezer or YouTube/],
+    [{ playlistLinks: [{ url: 'https://open.spotify.com/album/x', provider: 'spotify' }] }, /not a playlist/],
+    [{ playlistLinks: [{ url: 'https://www.youtube.com/watch?v=x', provider: 'youtube' }] }, /not a playlist/],
+    [{ playlistLinks: [{ url: 'https://open.spotify.com/playlist/x', provider: 'spotify', thumbnail: 'javascript:alert(1)' }] }, /https link/],
+    [{ playlistLinks: [{ url: 'https://open.spotify.com/playlist/x', provider: 'spotify', title: 42 }] }, /must be text/],
+    [{ playlistLinks: Array(11).fill({ url: 'https://open.spotify.com/playlist/x', provider: 'spotify' }) }, /at most 10/]
+  ];
+  for (const [answers, pattern] of bad) {
+    const res = await handler(request('POST', TOKEN, { answers }));
+    assert.equal(res.statusCode, 400, JSON.stringify(answers).slice(0, 80));
+    assert.match(JSON.parse(res.body).error, pattern);
+  }
+  assert.equal(updates().length, 0);
+});
+
+test('named dances are stored with a trimmed name and an optional song, and listed in the email', async () => {
+  const { handler } = loadModule();
+  const res = await handler(
+    request('POST', TOKEN, {
+      answers: {
+        namedDances: [
+          { name: '  Father and daughter ', song: song({ id: '7', title: 'My Girl', artist: 'The Temptations', extra: 'x' }) },
+          { name: 'Groom and mother', song: null },
+          { name: '', song: null }
+        ]
+      }
+    })
+  );
+  assert.equal(res.statusCode, 200);
+  const saved = store['abc-123'].planning.answers.namedDances;
+  assert.equal(saved.length, 2, 'an empty dance is dropped');
+  assert.equal(saved[0].name, 'Father and daughter');
+  assert.equal(saved[0].song.title, 'My Girl');
+  assert.equal(saved[0].song.extra, undefined);
+  assert.deepEqual(saved[1], { name: 'Groom and mother', song: null });
+  const text = emails[0].Content.Simple.Body.Text.Data;
+  assert.ok(text.includes('Other dances: Father and daughter: The Temptations – My Girl\nGroom and mother: song to be confirmed'));
+});
+
+test('named dances are validated', async () => {
+  const { handler } = loadModule();
+  const bad = [
+    [{ namedDances: 'x' }, /must be a list of dances/],
+    [{ namedDances: ['x'] }, /entries must be dances/],
+    [{ namedDances: [{ name: 42 }] }, /name must be text/],
+    [{ namedDances: [{ name: 'x'.repeat(81) }] }, /too long/],
+    [{ namedDances: [{ name: 'Ok', song: { source: 'spotify', id: '1', title: 'x' } }] }, /source must be/],
+    [{ namedDances: Array(9).fill({ name: 'x' }) }, /at most 8/]
+  ];
+  for (const [answers, pattern] of bad) {
+    const r = await handler(request('POST', TOKEN, { answers }));
+    assert.equal(r.statusCode, 400, JSON.stringify(answers).slice(0, 60));
+    assert.match(JSON.parse(r.body).error, pattern);
+  }
+});
+
+test('a playlist link\'s provider comes from the link, not from the client', async () => {
+  const { handler } = loadModule();
+  const res = await handler(
+    request('POST', TOKEN, { answers: { playlistLinks: [{ url: 'https://www.youtube.com/playlist?list=PLabc', provider: 'spotify', title: 'Mislabelled' }] } })
+  );
+  assert.equal(res.statusCode, 200);
+  assert.equal(store['abc-123'].planning.answers.playlistLinks[0].provider, 'youtube');
 });

@@ -235,6 +235,16 @@ to Booked, and parsed cleanly with ical.js.
 
 Tests: 16 for the calendar Lambda, 25 for the admin Lambda, 13 React cases.
 
+### Bookings by hand
+
+Not every booking starts on the website. "New booking" in the admin toolbar
+opens `/admin/new`: client name (the only required field), stage (default
+Booked), contact details, event type and package, date, venue, guests, quote,
+deposit and notes. `POST /admin/bookings` creates the record with
+`source: 'admin'`, a history entry by the admin's email, and, at Booked or
+later, a planning link ready to send. The Lambda's IAM gains `PutItem` with a
+condition that the id does not already exist.
+
 ### To deploy and try
 
 1. Merge the PR, run the Deploy workflow.
@@ -270,11 +280,17 @@ picked up the timings.
   answers and linking to the booking. A failed email never fails the save.
 - The form locks when the event is 3 days away or closer (423 on save; the page
   shows it read-only). No date means no lock.
-- Fields: set-up access, guest arrival, meal, speeches (wedding), DJ start, finish;
-  first dance and parent dances (wedding), last song, must play, do not play,
-  music style, announcements; venue contact name and phone, access notes; anything
-  else. Defined once in `src/shared/format.js` for the UI and once in the Lambda
-  for validation.
+- Fields: number of guests (prefilled from the enquiry, editable; the client's
+  number then wins in the admin view, email and calendar), set-up access, guest
+  arrival (not weddings), meal (weddings and corporate only), speeches (wedding),
+  DJ start, finish; first dance and named "other dances" (wedding), last song, must play, do not
+  play, and one free-text box "Anything else we need to know?" (the earlier
+  music-style, announcements and trailing anything-else boxes are folded into it
+  on load); venue contact name and phone, access notes. Playlist links sit at
+  the top of Party music so a couple with a playlist sees that first. Each field can carry `eventTypes` to limit which kinds of event
+  show it. Defined once in `src/shared/format.js` for the UI and once in the
+  Lambda for validation. A "play if possible" list existed briefly and was
+  removed at Daniel's request.
 - Admin detail view gains a "Planning form" card: the link with copy and "New
   link", or a "Create planning link" button, then the client's answers once they
   exist. The calendar feed adds the timings, first dance and venue contact to each
@@ -309,10 +325,21 @@ artwork and previews instead of typing names.
   automatic fallback, so search works before the key exists and if it ever breaks.
   Results are normalised to one shape: `{ source, id, title, artist, album,
   artwork, previewUrl, durationMs, url }`. Cached per query for 10 minutes.
-- Spotify's API was ruled out: since February 2026 development-mode apps are
+- Spotify's API was ruled out for reading tracks: since February 2026 a
+  development-mode app can only read playlists the logged-in user owns, is
   capped at 5 named users and 10 search results, and extended access needs a
-  business with 250k monthly users. Spotify playlist links get a clear message.
-- Apple Music and Deezer playlist links import every track (up to 300).
+  business with 250k monthly users.
+- **Shared playlist links** instead: the client pastes a Spotify, Apple Music,
+  Deezer or YouTube playlist link under "Playlists you love". `GET /music/link`
+  resolves the provider, title and cover through each service's public embed-info
+  endpoint (Spotify's oEmbed still works for any public link) and strips tracking
+  parameters. The link is saved on the answers (`playlistLinks`, max 10), shows
+  in the admin card with Open, and is in the email and copy-as-text. Daniel opens
+  it in his own account.
+- Pasting a link does the right thing on its own: every link is saved; an Apple
+  Music or Deezer link also has its tracks (up to 300) pulled into Must play
+  straight away; Spotify and YouTube are links only. There is no separate
+  import control.
 
 ### Data
 
@@ -325,9 +352,20 @@ shows it as a textarea with a "Use song search instead" switch.
 
 ### Screens
 
-- `src/plan/SongPicker.js`: search with 300ms debounce, results with artwork and
-  a 30-second preview (one shared player, `src/plan/preview.js`), add/remove,
-  "Can't find it? Type it in" for manual entries, playlist import on Must play.
+- Two sections. **Dances** (weddings only, `src/plan/DancePlanner.js`): the
+  first dance, then "Other dances" the couple name themselves (father and
+  daughter, groom and mother, up to 8), each with one song. Stored as
+  `namedDances: [{ name, song | null }]`; the old `parentDances` list is still
+  accepted and is carried over as named dances when a form loads. **Party
+  music** (`src/plan/MusicPlanner.js`): one search with an "Adding to" list
+  selector, then must play, do not play, last song and playlist links as plain
+  rows with a count and an Add shortcut that points the search at that list.
+  Both use `src/plan/SongFinder.js` for search and "type it in". This replaced a first version
+  with a search box inside every list, which Daniel found cluttered. Search has
+  a 300ms debounce, results show artwork and a 30-second preview (one shared
+  player, `src/shared/preview.js`), "Can't find it? Type it in" sits under the
+  results and adds to the selected list. Icons are small
+  inline SVGs in `src/shared/icons.js`.
 - Admin planning card shows song lists with artwork and an "Open" link, plus
   "Copy song lists as text" (Artist – Title per line) for Rekordbox/Serato prep.
 - The notification email and the calendar description render songs as

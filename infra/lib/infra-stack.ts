@@ -218,9 +218,9 @@ export class InfraStack extends cdk.Stack {
       },
     });
 
-    // Read and update only — the admin screen never deletes a booking.
+    // Read, update and create — the admin screen never deletes a booking.
     adminBookingsFn.addToRolePolicy(new iam.PolicyStatement({
-      actions: ['dynamodb:GetItem', 'dynamodb:UpdateItem'],
+      actions: ['dynamodb:GetItem', 'dynamodb:UpdateItem', 'dynamodb:PutItem'],
       resources: [bookingsTable.tableArn],
     }));
     adminBookingsFn.addToRolePolicy(new iam.PolicyStatement({
@@ -338,7 +338,7 @@ export class InfraStack extends cdk.Stack {
 
     httpApi.addRoutes({
       path: '/admin/bookings',
-      methods: [apigatewayv2.HttpMethod.GET],
+      methods: [apigatewayv2.HttpMethod.GET, apigatewayv2.HttpMethod.POST],
       integration: adminIntegration,
       authorizer: adminAuthorizer,
     });
@@ -379,6 +379,8 @@ export class InfraStack extends cdk.Stack {
     httpApi.addRoutes({ path: '/music/playlist', methods: [apigatewayv2.HttpMethod.GET], integration: musicIntegration });
     // 302 to a fresh preview link; stored ones expire (see the Lambda).
     httpApi.addRoutes({ path: '/music/preview', methods: [apigatewayv2.HttpMethod.GET], integration: musicIntegration });
+    // Title and cover for a shared playlist link (any of the four services).
+    httpApi.addRoutes({ path: '/music/link', methods: [apigatewayv2.HttpMethod.GET], integration: musicIntegration });
 
     // Stage-wide throttle. Per-route settings were tried first and bit twice:
     // CloudFormation applies the stage before new routes exist, and a rollback
