@@ -104,7 +104,9 @@ const describe = (b) => {
   if (event.type === 'wedding' && event.weddingPackage) {
     lines.push(`Package: ${WEDDING_PACKAGE_LABELS[event.weddingPackage] || event.weddingPackage}`);
   }
-  if (event.guestCount) lines.push(`Guests: ${event.guestCount}`);
+  // The client's own guest count from the planning form wins over the enquiry.
+  const guests = b.planning?.answers?.guestCount || event.guestCount;
+  if (guests) lines.push(`Guests: ${guests}`);
 
   const quote = formatMoney(pricing.quote);
   if (quote) {
@@ -133,6 +135,12 @@ const describe = (b) => {
     ? answers.firstDance.map((s) => (s.artist ? `${s.artist} – ${s.title}` : s.title)).join(', ')
     : answers.firstDance;
   if (firstDance) lines.push(`First dance: ${firstDance}`);
+  for (const dance of Array.isArray(answers.namedDances) ? answers.namedDances : []) {
+    if (dance?.name || dance?.song) {
+      const songText = dance.song ? (dance.song.artist ? `${dance.song.artist} – ${dance.song.title}` : dance.song.title) : 'song TBC';
+      lines.push(`${dance.name || 'Dance'}: ${songText}`);
+    }
+  }
   if (answers.venueContactName || answers.venueContactPhone) {
     lines.push(`Venue contact: ${[answers.venueContactName, answers.venueContactPhone].filter(Boolean).join(' ')}`);
   }

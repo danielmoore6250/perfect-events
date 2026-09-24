@@ -5,6 +5,8 @@
 // Routes (HTTP API v2 payloads):
 //   GET   /admin/config            public: Cognito ids the login screen needs
 //   GET   /admin/bookings          every booking, oldest event date first
+//   POST  /admin/bookings          create a booking by hand (one that did not
+//                                  come through the website form)
 //   GET   /admin/bookings/{id}     one booking
 //   PATCH /admin/bookings/{id}     update status, eventDate, pricing and notes
 //   POST  /admin/bookings/{id}/planning-link  give the booking a client planning
@@ -18,6 +20,7 @@ const {
   DynamoDBDocumentClient,
   QueryCommand,
   GetCommand,
+  PutCommand,
   UpdateCommand
 } = require('@aws-sdk/lib-dynamodb');
 
@@ -43,6 +46,11 @@ const STATUSES = [
   'completed',
   'lost'
 ];
+
+const EVENT_TYPES = ['wedding', 'private', 'corporate', 'pa-hire'];
+const WEDDING_PACKAGES = ['full-night', 'after-band', 'not-sure'];
+// Stages at which the client should have their planning link.
+const PLANNING_STAGES = new Set(['booked', 'details-requested', 'details-received']);
 
 const PRICING_FIELDS = ['quote', 'deposit', 'depositPaidOn', 'balancePaidOn'];
 const MONEY_FIELDS = new Set(['quote', 'deposit']);
@@ -180,7 +188,80 @@ const parsePricing = (pricing) => {
   return clean;
 };
 
+// A booking the admin types in themselves. Name is the only must-have; the
+// rest is whatever they know at the time.
+const parseNewBooking = (body) => {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new HttpError(400, 'Body must be a JSON object');
+  const text = (key, max = 200) => {
+    const v = body[key];
+    if (v === undefined || v === null) return '';
+    if (typeof v !== 'string') throw new HttpError(400, `${key} must be text`);
+    const t = v.trim();
+    if (t.length > max) throw new HttpError(400, `${key} is too long`);
+    return t;
+  };
+
+  const name = text('name');
+  if (!name) throw new HttpError(400, 'A client name is required');
+
+  const status = body.status === undefined ? 'booked' : body.status;
+  if (!STATUSES.includes(status)) throw new HttpError(400, `status must be one of: ${STATUSES.join(', ')}`);
+
+  const eventDate = body.eventDate === undefined || body.eventDate === null || body.eventDate === '' ? 'unknown' : body.eventDate;
+  if (eventDate !== 'unknown' && !isIsoDate(eventDate)) throw new HttpError(400, 'eventDate must be YYYY-MM-DD or "unknown"');
+
+  const eventType = text('eventType', 40) || null;
+  if (eventType && !EVENT_TYPES.includes(eventType)) throw new HttpError(400, `eventType must be one of: ${EVENT_TYPES.join(', ')}`);
+  const weddingPackage = eventType === 'wedding' ? text('weddingPackage', 40) || null : null;
+  if (weddingPackage && !WEDDING_PACKAGES.includes(weddingPackage)) throw new HttpError(400, `weddingPackage must be one of: ${WEDDING_PACKAGES.join(', ')}`);
+
+  const guestCount = text('guestCount', 10);
+  if (guestCount && !/^\d{1,5}$/.test(guestCount)) throw new HttpError(400, 'guestCount must be a whole number');
+
+  const notes = text('notes', MAX_NOTES_LENGTH) || null;
+  const pricing = body.pricing === undefined || body.pricing === null ? null : parsePricing(body.pricing);
+
+  return {
+    status,
+    eventDate,
+    client: { name, email: text('email'), phone: text('phone', 40) },
+    event: { type: eventType, weddingPackage, venue: text('venue') || null, guestCount: guestCount || null },
+    message: text('message', 5000) || null,
+    notes,
+    pricing
+  };
+};
+
 // ---- Data access ----------------------------------------------------------
+
+const createBooking = async (fields, actor) => {
+  const now = new Date().toISOString();
+  const record = {
+    id: crypto.randomUUID(),
+    recordType: 'booking',
+    status: fields.status,
+    source: 'admin',
+    createdAt: now,
+    updatedAt: now,
+    eventDate: fields.eventDate,
+    client: fields.client,
+    event: fields.event,
+    message: fields.message,
+    notes: fields.notes,
+    statusHistory: [{ status: fields.status, at: now, by: actor }]
+  };
+  if (fields.pricing) record.pricing = fields.pricing;
+  if (PLANNING_STAGES.has(fields.status)) record.planningToken = newToken();
+
+  await docClient.send(
+    new PutCommand({
+      TableName: BOOKINGS_TABLE,
+      Item: record,
+      ConditionExpression: 'attribute_not_exists(id)'
+    })
+  );
+  return record;
+};
 
 const listBookings = async () => {
   const bookings = [];
@@ -371,6 +452,11 @@ exports.handler = async (event) => {
 
     if (method === 'GET' && path === '/admin/bookings') {
       return respond(200, { bookings: await listBookings() });
+    }
+
+    if (method === 'POST' && path === '/admin/bookings') {
+      const booking = await createBooking(parseNewBooking(parseBody(event)), actorFrom(event));
+      return respond(201, { booking });
     }
 
     if (method === 'GET' && path === '/admin/calendar') {

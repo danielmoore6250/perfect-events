@@ -168,6 +168,11 @@ test('planning form timings and contacts appear in the description once the clie
   assert.ok(description.includes('First dance: Perfect - Ed Sheeran'));
   assert.ok(description.includes('Venue contact: Sam 028 9000 0000'));
 
+  bookings = [booking({ planning: { answers: { guestCount: 120 }, submittedAt: 'x', updatedAt: 'x' } })];
+  const updated = unfold((await handler(request(TOKEN))).body);
+  assert.ok(updated.includes('Guests: 120'), 'the client\'s updated count replaces the enquiry number');
+  assert.ok(!updated.includes('Guests: 150'));
+
   bookings = [booking()];
   const plain = unfold((await handler(request(TOKEN))).body);
   assert.ok(!plain.includes('Timings:'));
@@ -175,6 +180,10 @@ test('planning form timings and contacts appear in the description once the clie
   bookings = [booking({ planning: { answers: { firstDance: [{ source: 'apple', id: '1', title: 'Perfect', artist: 'Ed Sheeran' }] }, submittedAt: 'x', updatedAt: 'x' } })];
   const picked = unfold((await handler(request(TOKEN))).body);
   assert.ok(picked.includes('First dance: Ed Sheeran – Perfect'));
+
+  bookings = [booking({ planning: { answers: { namedDances: [{ name: 'Father and daughter', song: { source: 'apple', id: '7', title: 'My Girl', artist: 'The Temptations' } }, { name: 'Groom and mother', song: null }] }, submittedAt: 'x', updatedAt: 'x' } })];
+  const dances = unfold((await handler(request(TOKEN))).body);
+  assert.ok(dances.includes('Father and daughter: The Temptations – My Girl\\nGroom and mother: song TBC'));
 });
 
 test('a paid balance is reported as paid', async () => {

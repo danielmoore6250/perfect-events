@@ -6,7 +6,7 @@ const { test, beforeEach, afterEach, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
-const { DynamoDBDocumentClient, QueryCommand, GetCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBDocumentClient, QueryCommand, GetCommand, PutCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
 
 const HANDLER_PATH = path.join(__dirname, '..', 'index.js');
 const TABLE = 'bookings-test';
@@ -74,6 +74,11 @@ beforeEach(() => {
     }
     if (command instanceof GetCommand) {
       return { Item: store[command.input.Key.id] };
+    }
+    if (command instanceof PutCommand) {
+      assert.equal(command.input.ConditionExpression, 'attribute_not_exists(id)');
+      store[command.input.Item.id] = command.input.Item;
+      return {};
     }
     if (command instanceof UpdateCommand && command.input.Key.id === 'settings:calendar') {
       // Emulate SET with if_not_exists on the settings record.
@@ -196,7 +201,7 @@ test('unknown routes return 404', async () => {
   const handler = loadHandler();
   assert.equal((await handler(request('GET', '/admin/other'))).statusCode, 404);
   assert.equal((await handler(request('DELETE', '/admin/bookings/abc-123', { id: 'abc-123' }))).statusCode, 404);
-  assert.equal((await handler(request('POST', '/admin/bookings'))).statusCode, 404);
+  assert.equal((await handler(request('PUT', '/admin/bookings'))).statusCode, 404);
 });
 
 test('a missing table is a 500 for data routes only', async () => {
@@ -494,4 +499,81 @@ test('POST planning-link on an unknown booking is a 404', async () => {
   const handler = loadHandler();
   const res = await handler(request('POST', '/admin/bookings/nope/planning-link', { id: 'nope', body: {} }));
   assert.equal(res.statusCode, 404);
+});
+
+test('POST /admin/bookings creates a booked event by hand with a planning link and history', async () => {
+  const handler = loadHandler();
+  const res = await handler(
+    request('POST', '/admin/bookings', {
+      body: {
+        name: '  Ciara & Tom ',
+        email: 'ciara@example.com',
+        phone: '07700 900999',
+        eventType: 'wedding',
+        weddingPackage: 'after-band',
+        eventDate: '2027-08-14',
+        venue: 'Clandeboye Lodge',
+        guestCount: '180',
+        pricing: { quote: '£1,100', deposit: 300, depositPaidOn: '2026-09-20' },
+        notes: 'Booked over the phone'
+      },
+      claims: { email: 'daniel@example.com' }
+    })
+  );
+
+  assert.equal(res.statusCode, 201);
+  const b = JSON.parse(res.body).booking;
+  assert.match(b.id, /^[0-9a-f-]{36}$/);
+  assert.equal(b.recordType, 'booking');
+  assert.equal(b.source, 'admin');
+  assert.equal(b.status, 'booked');
+  assert.equal(b.eventDate, '2027-08-14');
+  assert.deepEqual(b.client, { name: 'Ciara & Tom', email: 'ciara@example.com', phone: '07700 900999' });
+  assert.deepEqual(b.event, { type: 'wedding', weddingPackage: 'after-band', venue: 'Clandeboye Lodge', guestCount: '180' });
+  assert.deepEqual(b.pricing, { quote: 1100, deposit: 300, depositPaidOn: '2026-09-20', balancePaidOn: null });
+  assert.equal(b.notes, 'Booked over the phone');
+  assert.deepEqual(b.statusHistory, [{ status: 'booked', at: b.createdAt, by: 'daniel@example.com' }]);
+  assert.match(b.planningToken, /^[A-Za-z0-9_-]{32}$/);
+  assert.equal(store[b.id].id, b.id);
+});
+
+test('POST /admin/bookings defaults: booked stage, unknown date, no link below booked', async () => {
+  const handler = loadHandler();
+  let res = await handler(request('POST', '/admin/bookings', { body: { name: 'Sam' } }));
+  assert.equal(res.statusCode, 201);
+  let b = JSON.parse(res.body).booking;
+  assert.equal(b.status, 'booked');
+  assert.equal(b.eventDate, 'unknown');
+  assert.deepEqual(b.event, { type: null, weddingPackage: null, venue: null, guestCount: null });
+  assert.equal(b.pricing, undefined);
+  assert.ok(b.planningToken);
+
+  res = await handler(request('POST', '/admin/bookings', { body: { name: 'Sam', status: 'quoted', eventType: 'corporate', weddingPackage: 'full-night' } }));
+  b = JSON.parse(res.body).booking;
+  assert.equal(b.status, 'quoted');
+  assert.equal(b.planningToken, undefined, 'no link until booked');
+  assert.equal(b.event.weddingPackage, null, 'package only applies to weddings');
+});
+
+test('POST /admin/bookings validates', async () => {
+  const handler = loadHandler();
+  const bad = [
+    [{}, /client name is required/],
+    [{ name: '   ' }, /client name is required/],
+    [{ name: 'x', status: 'paid' }, /status must be one of/],
+    [{ name: 'x', eventDate: '14/08/2027' }, /eventDate must be/],
+    [{ name: 'x', eventDate: '2027-02-30' }, /eventDate must be/],
+    [{ name: 'x', eventType: 'gig' }, /eventType must be one of/],
+    [{ name: 'x', eventType: 'wedding', weddingPackage: 'all-day' }, /weddingPackage must be/],
+    [{ name: 'x', guestCount: 'lots' }, /guestCount must be/],
+    [{ name: 'x', pricing: { quote: -1 } }, /non-negative/],
+    [{ name: 42 }, /must be text/],
+    [[], /Body must be a JSON object/]
+  ];
+  for (const [body, pattern] of bad) {
+    const res = await handler(request('POST', '/admin/bookings', { body }));
+    assert.equal(res.statusCode, 400, JSON.stringify(body));
+    assert.match(JSON.parse(res.body).error, pattern);
+  }
+  assert.equal(commands.filter((c) => c instanceof PutCommand).length, 0);
 });

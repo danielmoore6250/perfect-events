@@ -26,13 +26,17 @@ const ADMIN_URL = 'https://perfecteventsni.com/admin';
 const LOCK_DAYS_BEFORE = 3;
 
 // Every field the form can save. Anything else in the body is rejected.
-//   time:  HH:MM, 24-hour
-//   short: single line
-//   long:  free text
-//   songs: a list of song records picked from the catalogue (or typed in), up
+//   time:   HH:MM, 24-hour
+//   number: a whole number (guest count)
+//   short:  single line
+//   long:   free text
+//   dances: named dances, each { name, song | null }
+//   links:  shared playlist links (Spotify, Apple Music, Deezer, YouTube)
+//   songs:  a list of song records picked from the catalogue (or typed in), up
 //          to `max` of them. A plain string is still accepted for these, which
 //          is how forms filled in before the song picker existed were saved.
 const FIELDS = {
+  guestCount: { type: 'number', min: 1, max: 5000 },
   setupAccessTime: { type: 'time' },
   guestArrivalTime: { type: 'time' },
   mealTime: { type: 'time' },
@@ -40,11 +44,12 @@ const FIELDS = {
   djStartTime: { type: 'time' },
   finishTime: { type: 'time' },
   firstDance: { type: 'songs', max: 1, textMax: 200 },
-  parentDances: { type: 'songs', max: 5, textMax: 200 },
+  parentDances: { type: 'songs', max: 5, textMax: 200 }, // before dances had names; still accepted
+  namedDances: { type: 'dances', max: 8 },
   lastSong: { type: 'songs', max: 1, textMax: 200 },
   mustPlay: { type: 'songs', max: 100, textMax: 3000 },
-  playIfPossible: { type: 'songs', max: 100, textMax: 3000 },
   doNotPlay: { type: 'songs', max: 100, textMax: 3000 },
+  playlistLinks: { type: 'links', max: 10 },
   musicStyle: { type: 'long' },
   announcements: { type: 'long' },
   venueContactName: { type: 'short' },
@@ -117,6 +122,69 @@ const parseSongs = (raw, key, spec) => {
   return songs.length ? songs : undefined;
 };
 
+// One shared playlist link. The music service resolved the provider and title;
+// here we only make sure nothing but a real https link on a known host is kept.
+const LINK_HOSTS = /(^|\.)(spotify\.com|music\.apple\.com|deezer\.com|youtube\.com|youtu\.be)$/;
+const LINK_PROVIDERS = new Set(['spotify', 'apple', 'deezer', 'youtube']);
+
+const parseLink = (raw, field) => {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new HttpError(400, `${field} entries must be links`);
+  const url = typeof raw.url === 'string' ? raw.url.trim() : '';
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new HttpError(400, `${field}: not a valid link`);
+  }
+  if (parsed.protocol !== 'https:' || !LINK_HOSTS.test(parsed.hostname) || url.length > SONG_URL_MAX) {
+    throw new HttpError(400, `${field}: links must be Spotify, Apple Music, Deezer or YouTube`);
+  }
+  const provider = typeof raw.provider === 'string' && LINK_PROVIDERS.has(raw.provider) ? raw.provider : null;
+  if (!provider) throw new HttpError(400, `${field}: unknown provider`);
+  const text = (key) => {
+    const v = raw[key];
+    if (v === undefined || v === null) return null;
+    if (typeof v !== 'string') throw new HttpError(400, `${field}: ${key} must be text`);
+    const t = v.trim();
+    if (t.length > SONG_URL_MAX) throw new HttpError(400, `${field}: ${key} is too long`);
+    return t || null;
+  };
+  const thumbnail = text('thumbnail');
+  if (thumbnail && !isHttpsUrl(thumbnail)) throw new HttpError(400, `${field}: thumbnail must be an https link`);
+  return { url, provider, title: text('title')?.slice(0, 200) || null, thumbnail };
+};
+
+const parseLinks = (raw, key, spec) => {
+  if (!Array.isArray(raw)) throw new HttpError(400, `${key} must be a list of links`);
+  if (raw.length > spec.max) throw new HttpError(400, `${key} can hold at most ${spec.max} links`);
+  const links = raw.map((entry) => parseLink(entry, key));
+  return links.length ? links : undefined;
+};
+
+const DANCE_NAME_MAX = 80;
+const parseDances = (raw, key, spec) => {
+  if (!Array.isArray(raw)) throw new HttpError(400, `${key} must be a list of dances`);
+  if (raw.length > spec.max) throw new HttpError(400, `${key} can hold at most ${spec.max} dances`);
+  const dances = raw.map((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new HttpError(400, `${key} entries must be dances`);
+    if (entry.name !== undefined && entry.name !== null && typeof entry.name !== 'string') throw new HttpError(400, `${key}: name must be text`);
+    const name = (entry.name || '').trim();
+    if (name.length > DANCE_NAME_MAX) throw new HttpError(400, `${key}: a dance name is too long`);
+    const song = entry.song === undefined || entry.song === null ? null : parseSong(entry.song, key);
+    return { name, song };
+  }).filter((d) => d.name || d.song);
+  return dances.length ? dances : undefined;
+};
+
+const dancesToText = (value) =>
+  Array.isArray(value)
+    ? value.map((d) => `${d.name || 'Dance'}: ${d.song ? (d.song.artist ? `${d.song.artist} – ${d.song.title}` : d.song.title) : 'song to be confirmed'}`).join('\n')
+    : '';
+
+const PROVIDER_LABELS = { spotify: 'Spotify', apple: 'Apple Music', deezer: 'Deezer', youtube: 'YouTube' };
+const linksToText = (value) =>
+  Array.isArray(value) ? value.map((l) => `${l.title || 'Playlist'} (${PROVIDER_LABELS[l.provider] || l.provider}) ${l.url}`).join('\n') : '';
+
 // A song list as plain text: "Artist – Title" per line. Legacy text passes through.
 const songsToText = (value) => {
   if (typeof value === 'string') return value;
@@ -173,6 +241,30 @@ const parseAnswers = (body) => {
     if (spec.type === 'songs') {
       const songs = parseSongs(raw, key, spec);
       if (songs !== undefined) clean[key] = songs;
+      continue;
+    }
+
+    if (spec.type === 'dances') {
+      const dances = parseDances(raw, key, spec);
+      if (dances !== undefined) clean[key] = dances;
+      continue;
+    }
+
+    if (spec.type === 'links') {
+      const links = parseLinks(raw, key, spec);
+      if (links !== undefined) clean[key] = links;
+      continue;
+    }
+
+    if (spec.type === 'number') {
+      const text = typeof raw === 'number' ? String(raw) : typeof raw === 'string' ? raw.trim() : null;
+      if (text === null) throw new HttpError(400, `${key} must be a number`);
+      if (text === '') continue;
+      const n = Number(text);
+      if (!Number.isInteger(n) || n < spec.min || n > spec.max) {
+        throw new HttpError(400, `${key} must be a whole number between ${spec.min} and ${spec.max}`);
+      }
+      clean[key] = n;
       continue;
     }
 
@@ -322,6 +414,7 @@ const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
 
 const FIELD_LABELS = {
+  guestCount: 'Guests',
   setupAccessTime: 'Set-up access from',
   guestArrivalTime: 'Guests arrive',
   mealTime: 'Meal served',
@@ -330,16 +423,17 @@ const FIELD_LABELS = {
   finishTime: 'Music finishes',
   firstDance: 'First dance',
   parentDances: 'Parent dances',
+  namedDances: 'Other dances',
   lastSong: 'Last song',
   mustPlay: 'Must play',
-  playIfPossible: 'Play if possible',
   doNotPlay: 'Do not play',
+  playlistLinks: 'Playlists',
   musicStyle: 'Music style',
   announcements: 'Announcements',
   venueContactName: 'Venue contact',
   venueContactPhone: 'Venue phone',
   accessNotes: 'Access notes',
-  extraNotes: 'Anything else'
+  extraNotes: 'Anything else we need to know'
 };
 
 const notifyBusiness = async (booking, firstSubmission) => {
@@ -349,8 +443,14 @@ const notifyBusiness = async (booking, firstSubmission) => {
   const link = `${ADMIN_URL}/${booking.id}`;
   const answers = booking.planning?.answers || {};
 
-  const asText = (key) => (FIELDS[key].type === 'songs' ? songsToText(answers[key]) : answers[key]);
-  const answered = Object.keys(FIELDS).filter((key) => answers[key] && asText(key));
+  const asText = (key) => {
+    const type = FIELDS[key].type;
+    if (type === 'songs') return songsToText(answers[key]);
+    if (type === 'links') return linksToText(answers[key]);
+    if (type === 'dances') return dancesToText(answers[key]);
+    return String(answers[key] ?? '');
+  };
+  const answered = Object.keys(FIELDS).filter((key) => answers[key] !== undefined && answers[key] !== null && answers[key] !== '' && asText(key));
   const rows = answered
     .map((key) => `<tr><td style="padding:6px 12px 6px 0;color:#666;vertical-align:top;white-space:nowrap">${esc(FIELD_LABELS[key])}</td><td style="padding:6px 0">${esc(asText(key)).replace(/\n/g, '<br>')}</td></tr>`)
     .join('');
@@ -450,3 +550,5 @@ exports.FIELDS = FIELDS;
 exports.FIELD_LABELS = FIELD_LABELS;
 exports.isLocked = isLocked;
 exports.songsToText = songsToText;
+exports.linksToText = linksToText;
+exports.dancesToText = dancesToText;
