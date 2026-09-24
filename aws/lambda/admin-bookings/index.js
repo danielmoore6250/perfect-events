@@ -3,11 +3,14 @@
 // reaches this code the caller has already proved they are the admin user.
 //
 // Routes (HTTP API v2 payloads):
-//   GET   /admin/config          public: Cognito ids the login screen needs
-//   GET   /admin/bookings        every booking, oldest event date first
-//   GET   /admin/bookings/{id}   one booking
-//   PATCH /admin/bookings/{id}   update status, eventDate, pricing and notes
+//   GET   /admin/config            public: Cognito ids the login screen needs
+//   GET   /admin/bookings          every booking, oldest event date first
+//   GET   /admin/bookings/{id}     one booking
+//   PATCH /admin/bookings/{id}     update status, eventDate, pricing and notes
+//   GET   /admin/calendar          the calendar feed token (created on first use)
+//   POST  /admin/calendar/rotate   replace the token, invalidating the old feed URL
 
+const crypto = require('crypto');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const {
   DynamoDBDocumentClient,
@@ -23,6 +26,10 @@ const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({ region: REGIO
 
 const BOOKINGS_TABLE = process.env.BOOKINGS_TABLE;
 const BY_EVENT_DATE_INDEX = 'ByEventDate';
+
+// One settings record holds the calendar feed token. It has no eventDate, so
+// it never appears in the ByEventDate index alongside bookings.
+const CALENDAR_SETTINGS_ID = 'settings:calendar';
 
 // The stages a booking moves through. Order matters only for display.
 const STATUSES = [
@@ -254,6 +261,46 @@ const updateBooking = async (id, changes, actor, expectedUpdatedAt) => {
   }
 };
 
+// 192 random bits, URL-safe. Long enough that the feed URL cannot be guessed.
+const newCalendarToken = () => crypto.randomBytes(24).toString('base64url');
+
+const calendarView = (item) => ({
+  token: item.calendarToken,
+  rotatedAt: item.rotatedAt || item.createdAt || null
+});
+
+// Returns the token, creating it the first time the admin asks. UpdateItem
+// with if_not_exists means two simultaneous first requests still agree.
+const getCalendarSettings = async () => {
+  const now = new Date().toISOString();
+  const { Attributes } = await docClient.send(
+    new UpdateCommand({
+      TableName: BOOKINGS_TABLE,
+      Key: { id: CALENDAR_SETTINGS_ID },
+      UpdateExpression:
+        'SET recordType = if_not_exists(recordType, :type), calendarToken = if_not_exists(calendarToken, :token), createdAt = if_not_exists(createdAt, :now)',
+      ExpressionAttributeValues: { ':type': 'settings', ':token': newCalendarToken(), ':now': now },
+      ReturnValues: 'ALL_NEW'
+    })
+  );
+  return calendarView(Attributes);
+};
+
+const rotateCalendarToken = async (actor) => {
+  const now = new Date().toISOString();
+  const { Attributes } = await docClient.send(
+    new UpdateCommand({
+      TableName: BOOKINGS_TABLE,
+      Key: { id: CALENDAR_SETTINGS_ID },
+      UpdateExpression:
+        'SET recordType = :type, calendarToken = :token, rotatedAt = :now, rotatedBy = :actor, createdAt = if_not_exists(createdAt, :now)',
+      ExpressionAttributeValues: { ':type': 'settings', ':token': newCalendarToken(), ':now': now, ':actor': actor },
+      ReturnValues: 'ALL_NEW'
+    })
+  );
+  return calendarView(Attributes);
+};
+
 // ---- Handler --------------------------------------------------------------
 
 const actorFrom = (event) => {
@@ -292,6 +339,14 @@ exports.handler = async (event) => {
 
     if (method === 'GET' && path === '/admin/bookings') {
       return respond(200, { bookings: await listBookings() });
+    }
+
+    if (method === 'GET' && path === '/admin/calendar') {
+      return respond(200, { calendar: await getCalendarSettings() });
+    }
+
+    if (method === 'POST' && path === '/admin/calendar/rotate') {
+      return respond(200, { calendar: await rotateCalendarToken(actorFrom(event)) });
     }
 
     if (id && path === `/admin/bookings/${id}`) {

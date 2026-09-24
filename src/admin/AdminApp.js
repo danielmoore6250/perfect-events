@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import '../styles/Admin.css';
 import { getSession, signIn, completeNewPassword, forgotPassword, confirmForgotPassword, clearSession } from './auth';
-import { listBookings, getBooking, updateBooking } from './api';
+import { listBookings, getBooking, updateBooking, getCalendarLink, rotateCalendarLink, calendarFeedUrl } from './api';
 
 const STATUSES = [
   { value: 'enquiry', label: 'Enquiry' },
@@ -63,30 +63,32 @@ const formatMoney = (amount) =>
 
 const reference = (id) => (id || '').slice(0, 8).toUpperCase();
 
-// ---- Tiny router: /admin and /admin/<booking id> ---------------------------
+// ---- Tiny router: /admin, /admin/calendar and /admin/<booking id> ----------
 
-const idFromPath = () => {
+const CALENDAR_ROUTE = 'calendar';
+
+const routeFromPath = () => {
   const match = window.location.pathname.match(/^\/admin\/([^/]+)\/?$/);
   return match ? decodeURIComponent(match[1]) : null;
 };
 
 const useAdminRoute = () => {
-  const [bookingId, setBookingId] = useState(idFromPath);
+  const [route, setRoute] = useState(routeFromPath);
 
   useEffect(() => {
-    const onPop = () => setBookingId(idFromPath());
+    const onPop = () => setRoute(routeFromPath());
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
 
-  const navigate = useCallback((id) => {
-    const path = id ? `/admin/${encodeURIComponent(id)}` : '/admin';
+  const navigate = useCallback((next) => {
+    const path = next ? `/admin/${encodeURIComponent(next)}` : '/admin';
     if (window.location.pathname !== path) window.history.pushState(null, '', path);
-    setBookingId(id || null);
+    setRoute(next || null);
     window.scrollTo(0, 0);
   }, []);
 
-  return [bookingId, navigate];
+  return [route, navigate];
 };
 
 // ---- Screens ---------------------------------------------------------------
@@ -253,18 +255,18 @@ function BookingList({ onOpen, onAuthLost }) {
   }, [load]);
 
   const today = todayIso();
+  const matchesStage = (b) => (stage === 'active' ? !CLOSED_STATUSES.has(b.status) : stage === 'all' || b.status === stage);
+  const isPast = (b) => b.eventDate !== 'unknown' && b.eventDate < today;
+
   const visible = (bookings || [])
-    .filter((b) => {
-      if (stage === 'active') {
-        if (CLOSED_STATUSES.has(b.status)) return false;
-      } else if (stage !== 'all' && b.status !== stage) {
-        return false;
-      }
-      if (!includePast && b.eventDate !== 'unknown' && b.eventDate < today) return false;
-      return true;
-    })
+    .filter((b) => matchesStage(b) && (includePast || !isPast(b)))
     // 'unknown' sorts after any YYYY-MM-DD, which is where a TBC date belongs.
     .sort((a, b) => (a.eventDate < b.eventDate ? -1 : a.eventDate > b.eventDate ? 1 : 0));
+
+  // So an empty list can say why, rather than just "nothing matches".
+  const hiddenPast = includePast ? 0 : (bookings || []).filter((b) => matchesStage(b) && isPast(b)).length;
+  const hiddenByStage = (bookings || []).filter((b) => !matchesStage(b)).length;
+  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
   return (
     <section>
@@ -293,7 +295,21 @@ function BookingList({ onOpen, onAuthLost }) {
       {bookings === null ? (
         <p className="muted">Loading bookings…</p>
       ) : visible.length === 0 ? (
-        <p className="muted">No bookings match. {bookings.length > 0 && 'Try a different stage or include past dates.'}</p>
+        <div className="empty">
+          <p>{bookings.length === 0 ? 'No bookings yet. New enquiries from the website will appear here.' : 'No bookings match.'}</p>
+          {hiddenPast > 0 && (
+            <p className="muted">
+              {plural(hiddenPast, 'booking')} hidden because the date has passed.{' '}
+              <button type="button" className="button button--link" onClick={() => setIncludePast(true)}>Show past dates</button>
+            </p>
+          )}
+          {hiddenByStage > 0 && (
+            <p className="muted">
+              {plural(hiddenByStage, 'booking')} in other stages.{' '}
+              <button type="button" className="button button--link" onClick={() => setStage('all')}>Show every stage</button>
+            </p>
+          )}
+        </div>
       ) : (
         <div className="table-wrap">
           <table className="bookings">
@@ -561,9 +577,103 @@ function BookingDetail({ id, onBack, onAuthLost }) {
   );
 }
 
+function CalendarPage({ onBack, onAuthLost }) {
+  const [calendar, setCalendar] = useState(null);
+  const [error, setError] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    setError('');
+    try {
+      setCalendar(await getCalendarLink());
+    } catch (err) {
+      if (err.status === 401) return onAuthLost();
+      setError(err.message);
+    }
+  }, [onAuthLost]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const url = calendar ? calendarFeedUrl(calendar.token) : '';
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setError('Could not copy. Select the link and copy it by hand.');
+    }
+  };
+
+  const rotate = async () => {
+    if (!window.confirm('Generate a new link? The current one will stop working and every subscribed calendar will need the new link.')) return;
+    setError('');
+    setBusy(true);
+    try {
+      setCalendar(await rotateCalendarLink());
+    } catch (err) {
+      if (err.status === 401) return onAuthLost();
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section>
+      <button type="button" className="button button--link" onClick={onBack}>← All bookings</button>
+
+      <div className="detail__head">
+        <div>
+          <p className="admin__eyebrow">Calendar feed</p>
+          <h1 className="detail__title">Bookings in your calendar</h1>
+          <p className="detail__date">Subscribe once. Every booking at the Booked stage or later appears automatically, with the venue and the client's contact details.</p>
+        </div>
+      </div>
+
+      {error && <p className="notice notice--error" role="alert">{error}</p>}
+
+      <div className="card">
+        <h2 className="card__title">Your private link</h2>
+        {calendar ? (
+          <>
+            <p className="calendar__url"><code>{url}</code></p>
+            <div className="detail__actions">
+              <button type="button" className="button button--primary" onClick={copy}>{copied ? 'Copied' : 'Copy link'}</button>
+              <button type="button" className="button" onClick={rotate} disabled={busy}>{busy ? 'Working…' : 'Generate a new link'}</button>
+            </div>
+            <p className="muted small">
+              Anyone with this link can see your bookings, so treat it like a password. Generating a new link stops the old one working.
+              {calendar.rotatedAt && ` Current link created ${formatDateTime(calendar.rotatedAt)}.`}
+            </p>
+          </>
+        ) : (
+          <p className="muted">Loading…</p>
+        )}
+      </div>
+
+      <div className="card">
+        <h2 className="card__title">How to subscribe</h2>
+        <dl className="facts facts--stacked">
+          <dt>iPhone or iPad</dt>
+          <dd>Settings → Apps → Calendar → Accounts → Add Account → Other → Add Subscribed Calendar, then paste the link.</dd>
+          <dt>Mac Calendar</dt>
+          <dd>File → New Calendar Subscription, paste the link. Set "Auto-refresh" to every hour.</dd>
+          <dt>Google Calendar</dt>
+          <dd>On the web, next to "Other calendars" press + → From URL, paste the link. Google refreshes subscribed calendars a few times a day.</dd>
+        </dl>
+      </div>
+    </section>
+  );
+}
+
 export default function AdminApp() {
   const [session, setSession] = useState(getSession);
-  const [bookingId, navigate] = useAdminRoute();
+  const [route, navigate] = useAdminRoute();
 
   useEffect(() => {
     document.title = 'Bookings · Perfect Events NI';
@@ -583,13 +693,16 @@ export default function AdminApp() {
           Perfect Events NI <span className="muted">/ bookings</span>
         </button>
         <div className="admin__user">
+          <button type="button" className="button button--link" onClick={() => navigate(CALENDAR_ROUTE)}>Calendar</button>
           <span className="muted small">{session.email}</span>
           <button type="button" className="button button--link" onClick={signOut}>Sign out</button>
         </div>
       </header>
       <main className="admin__main">
-        {bookingId ? (
-          <BookingDetail id={bookingId} onBack={() => navigate(null)} onAuthLost={signOut} />
+        {route === CALENDAR_ROUTE ? (
+          <CalendarPage onBack={() => navigate(null)} onAuthLost={signOut} />
+        ) : route ? (
+          <BookingDetail id={route} onBack={() => navigate(null)} onAuthLost={signOut} />
         ) : (
           <BookingList onOpen={navigate} onAuthLost={signOut} />
         )}

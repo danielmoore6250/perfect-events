@@ -148,9 +148,10 @@ be tested this way. The CRA boilerplate test was removed for that reason.
 Alternatively `./infra/deploy.sh` deploys from a machine with AWS credentials and
 skips steps 3–5, but the workflow is the intended route.
 
-## Phase 2 — admin screen (code complete, not deployed)
+## Phase 2 — admin screen (deployed 2026-09-24)
 
-Branch `bookings-phase-2`. Phase 1 was deployed and verified on 2026-09-22.
+Phase 1 was deployed and verified on 2026-09-22, Phase 2 on 2026-09-24: sign-in,
+list, and a stage change with a quote all confirmed against the table.
 
 ### Auth
 
@@ -205,18 +206,40 @@ Tests: `npm test` in the Lambda directory, 22 cases, run in PR checks.
   fields are sent. Balance due is shown from quote minus deposit.
 - `robots.txt` disallows `/admin`.
 
+## Phase 3 — calendar feed (code complete, not deployed)
+
+Branch `bookings-phase-3`.
+
+### How it works
+
+- The feed URL is `<api>/calendar/<token>.ics`. The token is 192 random bits
+  stored on a settings record in the bookings table (`id = settings:calendar`,
+  `recordType = settings`, so it never appears in the `ByEventDate` index).
+- `aws/lambda/calendar-feed` handles `GET /calendar/{token}`: reads the settings
+  record, compares the token in constant time, and on a mismatch returns the same
+  404 as a missing route. IAM is `GetItem` on the table and `Query` on the index.
+- Every booking at `booked`, `details-requested`, `details-received` or
+  `completed` with a real date becomes an all-day `VEVENT`: summary "Wedding:
+  Aoife Murphy", venue as `LOCATION`, description with phone, email, package,
+  guests, quote and balance, stage, notes, and a link to the admin page. Times
+  are not on the record yet; Phase 4 adds them.
+- Admin Lambda: `GET /admin/calendar` returns the token (creating it on first
+  use with `if_not_exists`), `POST /admin/calendar/rotate` replaces it. Both
+  behind the JWT authorizer. The screen builds the URL from `API_BASE`.
+- Admin screen: "Calendar" in the header opens `/admin/calendar` with the link,
+  a copy button, "Generate a new link" (with confirm) and subscribe instructions
+  for iPhone, Mac and Google Calendar.
+- The empty booking list now says why it is empty ("1 booking hidden because the
+  date has passed") with a one-click fix.
+
+Tests: 14 for the calendar Lambda, 25 for the admin Lambda, 13 React cases.
+
 ### To deploy and try
 
 1. Merge the PR, run the Deploy workflow.
-2. Watch the admin inbox for the Cognito invitation with the temporary password.
-3. Visit `perfecteventsni.com/admin`, sign in, set a real password.
-4. Open the test booking, change its stage, save, reload to confirm the history.
-
-## Phase 3 — calendar feed
-
-- Lambda serving an `.ics` feed of `booked` events at a long, unguessable URL,
-  subscribed once on the phone. Read-only, so nothing to keep in sync by hand.
-- Include venue, times and the client's contact details in each event.
+2. In the admin screen open Calendar, copy the link, subscribe on the phone.
+3. Move a booking to Booked and confirm it appears in the calendar after the
+   next refresh (calendar apps poll on their own schedule, often hourly).
 
 ## Phase 4 — client planning form
 

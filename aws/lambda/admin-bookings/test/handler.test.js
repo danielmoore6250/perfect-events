@@ -75,6 +75,23 @@ beforeEach(() => {
     if (command instanceof GetCommand) {
       return { Item: store[command.input.Key.id] };
     }
+    if (command instanceof UpdateCommand && command.input.Key.id === 'settings:calendar') {
+      // Emulate SET with if_not_exists on the settings record.
+      const values = command.input.ExpressionAttributeValues;
+      const existing = store['settings:calendar'] || {};
+      const next = { id: 'settings:calendar', ...existing };
+      for (const clause of splitClauses(command.input.UpdateExpression.replace(/^SET /, ''))) {
+        const [field, expr] = clause.split(' = ');
+        const guarded = expr.match(/^if_not_exists\(\w+, (:\w+)\)$/);
+        if (guarded) {
+          if (next[field] === undefined) next[field] = values[guarded[1]];
+        } else {
+          next[field] = values[expr];
+        }
+      }
+      store['settings:calendar'] = next;
+      return { Attributes: next };
+    }
     if (command instanceof UpdateCommand) {
       const item = store[command.input.Key.id];
       if (!item) {
@@ -398,4 +415,39 @@ test('unexpected errors are a generic 500', async () => {
 
   assert.equal(res.statusCode, 500);
   assert.deepEqual(JSON.parse(res.body), { error: 'Something went wrong' });
+});
+
+test('GET /admin/calendar creates a long random token on first use and then returns the same one', async () => {
+  const handler = loadHandler();
+
+  const first = await handler(request('GET', '/admin/calendar'));
+  assert.equal(first.statusCode, 200);
+  const { token, rotatedAt } = JSON.parse(first.body).calendar;
+  assert.match(token, /^[A-Za-z0-9_-]{32}$/);
+  assert.ok(!Number.isNaN(Date.parse(rotatedAt)));
+  assert.equal(store['settings:calendar'].recordType, 'settings');
+  assert.equal(store['settings:calendar'].eventDate, undefined, 'settings must stay out of the ByEventDate index');
+
+  const second = await handler(request('GET', '/admin/calendar'));
+  assert.equal(JSON.parse(second.body).calendar.token, token);
+});
+
+test('POST /admin/calendar/rotate replaces the token and records who did it', async () => {
+  const handler = loadHandler();
+  const before = JSON.parse((await handler(request('GET', '/admin/calendar'))).body).calendar.token;
+
+  const res = await handler(request('POST', '/admin/calendar/rotate', { claims: { email: 'daniel@example.com' } }));
+  assert.equal(res.statusCode, 200);
+  const after = JSON.parse(res.body).calendar.token;
+
+  assert.match(after, /^[A-Za-z0-9_-]{32}$/);
+  assert.notEqual(after, before);
+  assert.equal(store['settings:calendar'].calendarToken, after);
+  assert.equal(store['settings:calendar'].rotatedBy, 'daniel@example.com');
+});
+
+test('calendar routes reject the wrong method', async () => {
+  const handler = loadHandler();
+  assert.equal((await handler(request('POST', '/admin/calendar'))).statusCode, 404);
+  assert.equal((await handler(request('GET', '/admin/calendar/rotate'))).statusCode, 404);
 });

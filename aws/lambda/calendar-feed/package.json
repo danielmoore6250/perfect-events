@@ -1,0 +1,15 @@
+{
+  "name": "calendar-feed",
+  "version": "1.0.0",
+  "description": "Serves booked events as an iCalendar feed at a secret URL",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test test/handler.test.js"
+  },
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1137.0",
+    "@aws-sdk/lib-dynamodb": "^3.1137.0"
+  }
+}
