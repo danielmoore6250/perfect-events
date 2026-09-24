@@ -7,6 +7,7 @@ import '../styles/Plan.css';
 import { API_BASE } from '../config';
 import { PLANNING_SECTIONS, PLANNING_FIELDS, fieldApplies, WEDDING_PACKAGE_LABELS, formatDateTime } from '../shared/format';
 import MusicPlanner from './MusicPlanner';
+import DancePlanner from './DancePlanner';
 import { stopPreview } from '../shared/preview';
 
 const tokenFromPath = () => {
@@ -15,7 +16,7 @@ const tokenFromPath = () => {
 };
 
 const emptyAnswers = () =>
-  Object.fromEntries(PLANNING_FIELDS.map((f) => [f.key, f.type === 'songs' || f.type === 'links' ? [] : '']));
+  Object.fromEntries(PLANNING_FIELDS.map((f) => [f.key, ['songs', 'links', 'dances'].includes(f.type) ? [] : '']));
 
 // Only the fields this form knows about; anything else on the record is left alone.
 const knownAnswers = (answers = {}) =>
@@ -44,6 +45,12 @@ export default function PlanApp() {
     const next = { ...emptyAnswers(), ...knownAnswers(b.answers) };
     // The guest count starts from the enquiry until the client changes it.
     if (next.guestCount === '' && b.guestCount) next.guestCount = String(b.guestCount);
+    // Forms filled in before dances had names stored parent dances as a plain
+    // list; carry them over as named dances so nothing is lost.
+    const oldParent = b.answers?.parentDances;
+    if (Array.isArray(oldParent) && oldParent.length && next.namedDances.length === 0) {
+      next.namedDances = oldParent.map((song) => ({ name: 'Parent dance', song }));
+    }
     setAnswers(next);
     setSaved(next);
   }, []);
@@ -172,16 +179,24 @@ export default function PlanApp() {
             <fieldset className="card plan__section" key={section.title} disabled={locked || busy}>
               <legend className="card__title">{section.title}</legend>
               {section.hint && <p className="muted small plan__hint">{section.hint}</p>}
-              {fields.some((f) => f.type === 'songs') && (
+              {fields.some((f) => f.type === 'dances') ? (
+                <DancePlanner
+                  firstDanceField={fields.find((f) => f.key === 'firstDance')}
+                  dancesField={fields.find((f) => f.type === 'dances')}
+                  answers={answers}
+                  onChange={(key, value) => setValue(key)(value)}
+                  disabled={locked || busy}
+                />
+              ) : fields.some((f) => f.type === 'songs') ? (
                 <MusicPlanner
                   fields={fields.filter((f) => f.type === 'songs' || f.type === 'links')}
                   answers={answers}
                   onChange={(key, value) => setValue(key)(value)}
                   disabled={locked || busy}
                 />
-              )}
+              ) : null}
               <div className={['time', 'number'].includes(section.fields[0].type) ? 'plan__grid' : 'plan__stack'}>
-                {fields.filter((f) => f.type !== 'songs' && f.type !== 'links').map((f) => (
+                {fields.filter((f) => !['songs', 'links', 'dances'].includes(f.type)).map((f) => (
                   <label className="field" key={f.key}>
                     <span>{f.label}</span>
                     {f.type === 'long' ? (

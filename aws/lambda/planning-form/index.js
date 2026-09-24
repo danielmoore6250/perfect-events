@@ -30,6 +30,7 @@ const LOCK_DAYS_BEFORE = 3;
 //   number: a whole number (guest count)
 //   short:  single line
 //   long:   free text
+//   dances: named dances, each { name, song | null }
 //   links:  shared playlist links (Spotify, Apple Music, Deezer, YouTube)
 //   songs:  a list of song records picked from the catalogue (or typed in), up
 //          to `max` of them. A plain string is still accepted for these, which
@@ -43,7 +44,8 @@ const FIELDS = {
   djStartTime: { type: 'time' },
   finishTime: { type: 'time' },
   firstDance: { type: 'songs', max: 1, textMax: 200 },
-  parentDances: { type: 'songs', max: 5, textMax: 200 },
+  parentDances: { type: 'songs', max: 5, textMax: 200 }, // before dances had names; still accepted
+  namedDances: { type: 'dances', max: 8 },
   lastSong: { type: 'songs', max: 1, textMax: 200 },
   mustPlay: { type: 'songs', max: 100, textMax: 3000 },
   doNotPlay: { type: 'songs', max: 100, textMax: 3000 },
@@ -159,6 +161,26 @@ const parseLinks = (raw, key, spec) => {
   return links.length ? links : undefined;
 };
 
+const DANCE_NAME_MAX = 80;
+const parseDances = (raw, key, spec) => {
+  if (!Array.isArray(raw)) throw new HttpError(400, `${key} must be a list of dances`);
+  if (raw.length > spec.max) throw new HttpError(400, `${key} can hold at most ${spec.max} dances`);
+  const dances = raw.map((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new HttpError(400, `${key} entries must be dances`);
+    if (entry.name !== undefined && entry.name !== null && typeof entry.name !== 'string') throw new HttpError(400, `${key}: name must be text`);
+    const name = (entry.name || '').trim();
+    if (name.length > DANCE_NAME_MAX) throw new HttpError(400, `${key}: a dance name is too long`);
+    const song = entry.song === undefined || entry.song === null ? null : parseSong(entry.song, key);
+    return { name, song };
+  }).filter((d) => d.name || d.song);
+  return dances.length ? dances : undefined;
+};
+
+const dancesToText = (value) =>
+  Array.isArray(value)
+    ? value.map((d) => `${d.name || 'Dance'}: ${d.song ? (d.song.artist ? `${d.song.artist} – ${d.song.title}` : d.song.title) : 'song to be confirmed'}`).join('\n')
+    : '';
+
 const PROVIDER_LABELS = { spotify: 'Spotify', apple: 'Apple Music', deezer: 'Deezer', youtube: 'YouTube' };
 const linksToText = (value) =>
   Array.isArray(value) ? value.map((l) => `${l.title || 'Playlist'} (${PROVIDER_LABELS[l.provider] || l.provider}) ${l.url}`).join('\n') : '';
@@ -219,6 +241,12 @@ const parseAnswers = (body) => {
     if (spec.type === 'songs') {
       const songs = parseSongs(raw, key, spec);
       if (songs !== undefined) clean[key] = songs;
+      continue;
+    }
+
+    if (spec.type === 'dances') {
+      const dances = parseDances(raw, key, spec);
+      if (dances !== undefined) clean[key] = dances;
       continue;
     }
 
@@ -395,6 +423,7 @@ const FIELD_LABELS = {
   finishTime: 'Music finishes',
   firstDance: 'First dance',
   parentDances: 'Parent dances',
+  namedDances: 'Other dances',
   lastSong: 'Last song',
   mustPlay: 'Must play',
   doNotPlay: 'Do not play',
@@ -414,8 +443,13 @@ const notifyBusiness = async (booking, firstSubmission) => {
   const link = `${ADMIN_URL}/${booking.id}`;
   const answers = booking.planning?.answers || {};
 
-  const asText = (key) =>
-    FIELDS[key].type === 'songs' ? songsToText(answers[key]) : FIELDS[key].type === 'links' ? linksToText(answers[key]) : String(answers[key] ?? '');
+  const asText = (key) => {
+    const type = FIELDS[key].type;
+    if (type === 'songs') return songsToText(answers[key]);
+    if (type === 'links') return linksToText(answers[key]);
+    if (type === 'dances') return dancesToText(answers[key]);
+    return String(answers[key] ?? '');
+  };
   const answered = Object.keys(FIELDS).filter((key) => answers[key] !== undefined && answers[key] !== null && answers[key] !== '' && asText(key));
   const rows = answered
     .map((key) => `<tr><td style="padding:6px 12px 6px 0;color:#666;vertical-align:top;white-space:nowrap">${esc(FIELD_LABELS[key])}</td><td style="padding:6px 0">${esc(asText(key)).replace(/\n/g, '<br>')}</td></tr>`)
@@ -517,3 +551,4 @@ exports.FIELD_LABELS = FIELD_LABELS;
 exports.isLocked = isLocked;
 exports.songsToText = songsToText;
 exports.linksToText = linksToText;
+exports.dancesToText = dancesToText;

@@ -135,6 +135,12 @@ const describe = (b) => {
     ? answers.firstDance.map((s) => (s.artist ? `${s.artist} – ${s.title}` : s.title)).join(', ')
     : answers.firstDance;
   if (firstDance) lines.push(`First dance: ${firstDance}`);
+  for (const dance of Array.isArray(answers.namedDances) ? answers.namedDances : []) {
+    if (dance?.name || dance?.song) {
+      const songText = dance.song ? (dance.song.artist ? `${dance.song.artist} – ${dance.song.title}` : dance.song.title) : 'song TBC';
+      lines.push(`${dance.name || 'Dance'}: ${songText}`);
+    }
+  }
   if (answers.venueContactName || answers.venueContactPhone) {
     lines.push(`Venue contact: ${[answers.venueContactName, answers.venueContactPhone].filter(Boolean).join(' ')}`);
   }

@@ -338,9 +338,15 @@ shows it as a textarea with a "Use song search instead" switch.
 
 ### Screens
 
-- `src/plan/MusicPlanner.js`: the Music section is one search with an "Adding
-  to" list selector, then the six lists as plain rows with a count and an Add
-  shortcut that points the search at that list. This replaced a first version
+- Two sections. **Dances** (weddings only, `src/plan/DancePlanner.js`): the
+  first dance, then "Other dances" the couple name themselves (father and
+  daughter, groom and mother, up to 8), each with one song. Stored as
+  `namedDances: [{ name, song | null }]`; the old `parentDances` list is still
+  accepted and is carried over as named dances when a form loads. **Party
+  music** (`src/plan/MusicPlanner.js`): one search with an "Adding to" list
+  selector, then must play, do not play, last song and playlist links as plain
+  rows with a count and an Add shortcut that points the search at that list.
+  Both use `src/plan/SongFinder.js` for search and "type it in". This replaced a first version
   with a search box inside every list, which Daniel found cluttered. Search has
   a 300ms debounce, results show artwork and a 30-second preview (one shared
   player, `src/shared/preview.js`), "Can't find it? Type it in" and "Import a

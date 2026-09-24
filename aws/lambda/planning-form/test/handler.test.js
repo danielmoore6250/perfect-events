@@ -501,3 +501,44 @@ test('playlist links are validated', async () => {
   }
   assert.equal(updates().length, 0);
 });
+
+test('named dances are stored with a trimmed name and an optional song, and listed in the email', async () => {
+  const { handler } = loadModule();
+  const res = await handler(
+    request('POST', TOKEN, {
+      answers: {
+        namedDances: [
+          { name: '  Father and daughter ', song: song({ id: '7', title: 'My Girl', artist: 'The Temptations', extra: 'x' }) },
+          { name: 'Groom and mother', song: null },
+          { name: '', song: null }
+        ]
+      }
+    })
+  );
+  assert.equal(res.statusCode, 200);
+  const saved = store['abc-123'].planning.answers.namedDances;
+  assert.equal(saved.length, 2, 'an empty dance is dropped');
+  assert.equal(saved[0].name, 'Father and daughter');
+  assert.equal(saved[0].song.title, 'My Girl');
+  assert.equal(saved[0].song.extra, undefined);
+  assert.deepEqual(saved[1], { name: 'Groom and mother', song: null });
+  const text = emails[0].Content.Simple.Body.Text.Data;
+  assert.ok(text.includes('Other dances: Father and daughter: The Temptations – My Girl\nGroom and mother: song to be confirmed'));
+});
+
+test('named dances are validated', async () => {
+  const { handler } = loadModule();
+  const bad = [
+    [{ namedDances: 'x' }, /must be a list of dances/],
+    [{ namedDances: ['x'] }, /entries must be dances/],
+    [{ namedDances: [{ name: 42 }] }, /name must be text/],
+    [{ namedDances: [{ name: 'x'.repeat(81) }] }, /too long/],
+    [{ namedDances: [{ name: 'Ok', song: { source: 'spotify', id: '1', title: 'x' } }] }, /source must be/],
+    [{ namedDances: Array(9).fill({ name: 'x' }) }, /at most 8/]
+  ];
+  for (const [answers, pattern] of bad) {
+    const r = await handler(request('POST', TOKEN, { answers }));
+    assert.equal(r.statusCode, 400, JSON.stringify(answers).slice(0, 60));
+    assert.match(JSON.parse(r.body).error, pattern);
+  }
+});

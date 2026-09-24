@@ -92,6 +92,7 @@ const visit = (path) => {
 };
 
 const picker = (label) => within(screen.getByRole('group', { name: label }));
+const partyFinder = () => within(screen.getByRole('group', { name: 'Add songs' }));
 const finder = () => screen.getByLabelText('Search for a song');
 const chooseList = (label) => fireEvent.change(screen.getByLabelText('Adding to'), { target: { value: PLANNING_FIELDS.find((f) => f.label === label).key } });
 const search = (text) => fireEvent.change(finder(), { target: { value: text } });
@@ -103,7 +104,10 @@ test('greets the client by first name with their event details and wedding-only 
   expect(await screen.findByRole('heading', { name: "Hi Aoife, let's plan your wedding" })).toBeInTheDocument();
   expect(screen.getByText(/Friday 12 June 2099 · Galgorm Resort · Full night/)).toBeInTheDocument();
   expect(screen.getByRole('group', { name: 'First dance' })).toBeInTheDocument();
-  expect(screen.queryByRole('group', { name: 'Play if possible' })).not.toBeInTheDocument();
+  expect(screen.getByRole('group', { name: 'Other dances' })).toBeInTheDocument();
+  expect(screen.queryByRole('group', { name: /Parent dances/ })).not.toBeInTheDocument();
+  expect(screen.getByLabelText('Search for the first dance song')).toBeInTheDocument();
+  expect(within(screen.getByLabelText('Adding to')).queryByRole('option', { name: /First dance/ })).not.toBeInTheDocument();
   expect(screen.getByLabelText('Speeches')).toBeInTheDocument();
   expect(screen.getByLabelText('Meal served')).toBeInTheDocument();
   expect(screen.queryByLabelText('Guests arrive')).not.toBeInTheDocument();
@@ -118,11 +122,12 @@ test('a corporate event keeps the meal time but hides the wedding-only fields an
   visit(`/plan/${TOKEN}`);
   await screen.findByRole('heading', { name: "Hi Aoife, let's plan your corporate event" });
   expect(screen.queryByRole('group', { name: 'First dance' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('group', { name: 'Other dances' })).not.toBeInTheDocument();
+  expect(screen.queryByText('Dances')).not.toBeInTheDocument();
   expect(screen.queryByLabelText('Speeches')).not.toBeInTheDocument();
   expect(screen.getByLabelText('Meal served')).toBeInTheDocument();
   expect(screen.getByLabelText('Guests arrive')).toBeInTheDocument();
   expect(screen.getByRole('group', { name: 'Last song of the night' })).toBeInTheDocument();
-  expect(within(screen.getByLabelText('Adding to')).queryByRole('option', { name: /First dance/ })).not.toBeInTheDocument();
 });
 
 test('a bad link shows a clear message and never renders the form', async () => {
@@ -139,10 +144,10 @@ test('a malformed path is treated as a bad link without calling the API', async 
 
 test('the Add shortcut on a list points the search at it; adding to a one-song list fills it and closes the search', async () => {
   visit(`/plan/${TOKEN}`);
-  await screen.findByRole('group', { name: 'First dance' });
+  await screen.findByRole('group', { name: 'Last song of the night' });
 
-  fireEvent.click(picker('First dance').getByRole('button', { name: 'Add to First dance' }));
-  expect(screen.getByLabelText('Adding to')).toHaveValue('firstDance');
+  fireEvent.click(picker('Last song of the night').getByRole('button', { name: 'Add to Last song of the night' }));
+  expect(screen.getByLabelText('Adding to')).toHaveValue('lastSong');
   expect(finder()).toHaveFocus();
 
   search('perf');
@@ -160,15 +165,15 @@ test('the Add shortcut on a list points the search at it; adding to a one-song l
   expect(await results().findByRole('button', { name: 'Stop preview of Perfect' })).toBeInTheDocument();
 
   fireEvent.click(addPerfect);
-  expect(picker('First dance').getByRole('button', { name: 'Remove Perfect' })).toBeInTheDocument();
-  expect(picker('First dance').queryByRole('button', { name: 'Add to First dance' })).not.toBeInTheDocument();
+  expect(picker('Last song of the night').getByRole('button', { name: 'Remove Perfect' })).toBeInTheDocument();
+  expect(picker('Last song of the night').queryByRole('button', { name: 'Add to Last song of the night' })).not.toBeInTheDocument();
   expect(screen.queryByRole('list', { name: 'Search results' })).not.toBeInTheDocument();
   expect(finder()).toBeDisabled();
-  expect(screen.getByText(/Remove the current first dance song/)).toBeInTheDocument();
-  expect(within(screen.getByLabelText('Adding to')).getByRole('option', { name: 'First dance (full)' })).toBeInTheDocument();
+  expect(screen.getByText(/Remove the current last song of the night song/)).toBeInTheDocument();
+  expect(within(screen.getByLabelText('Adding to')).getByRole('option', { name: 'Last song of the night (full)' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Send us your details' })).toBeEnabled();
 
-  fireEvent.click(picker('First dance').getByRole('button', { name: 'Remove Perfect' }));
+  fireEvent.click(picker('Last song of the night').getByRole('button', { name: 'Remove Perfect' }));
   expect(finder()).toBeEnabled();
   expect(screen.getByRole('button', { name: 'Send us your details' })).toBeDisabled();
 });
@@ -200,15 +205,15 @@ test('a song the catalogue does not have can be typed in to the chosen list', as
   visit(`/plan/${TOKEN}`);
   await screen.findByLabelText('Search for a song');
   chooseList('Do not play');
-  fireEvent.click(screen.getByRole('button', { name: "Can't find it? Type it in" }));
-  fireEvent.change(screen.getByLabelText('Song title'), { target: { value: 'Our terrible song' } });
-  fireEvent.change(screen.getByLabelText('Artist'), { target: { value: 'Uncle Pat' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Add typed-in song to Do not play' }));
+  fireEvent.click(partyFinder().getByRole('button', { name: "Can't find it? Type it in" }));
+  fireEvent.change(partyFinder().getByLabelText('Song title'), { target: { value: 'Our terrible song' } });
+  fireEvent.change(partyFinder().getByLabelText('Artist'), { target: { value: 'Uncle Pat' } });
+  fireEvent.click(partyFinder().getByRole('button', { name: 'Add typed-in song' }));
 
   const dnp = picker('Do not play');
   expect(dnp.getByText('Our terrible song')).toBeInTheDocument();
   expect(dnp.getByText('Uncle Pat')).toBeInTheDocument();
-  expect(screen.queryByLabelText('Song title')).not.toBeInTheDocument();
+  expect(partyFinder().queryByLabelText('Song title')).not.toBeInTheDocument();
 
   fireEvent.click(screen.getByRole('button', { name: 'Send us your details' }));
   await waitFor(() => expect(posts).toHaveLength(1));
@@ -249,10 +254,11 @@ test('sending posts the picked songs and time fields, then allows editing again'
   await screen.findByLabelText('Search for a song');
 
   fireEvent.change(screen.getByLabelText('DJ starts'), { target: { value: '19:30' } });
-  chooseList('First dance');
-  search('perfect');
+  fireEvent.change(screen.getByLabelText('Search for the first dance song'), { target: { value: 'perfect' } });
   await waitResults();
   fireEvent.click(results().getByRole('button', { name: 'Add Perfect by Ed Sheeran' }));
+  expect(picker('First dance').getByRole('button', { name: 'Remove Perfect' })).toBeInTheDocument();
+  expect(screen.queryByLabelText('Search for the first dance song')).not.toBeInTheDocument();
 
   fireEvent.click(screen.getByRole('button', { name: 'Send us your details' }));
   expect(await screen.findByText(/Saved\. We've got your details/)).toBeInTheDocument();
@@ -292,13 +298,10 @@ test('previous song picks are shown on return, and legacy typed text is editable
 
   const first = picker('First dance');
   expect(first.getByLabelText('First dance')).toHaveValue('Yellow – Coldplay');
-  expect(first.queryByRole('button', { name: 'Add to First dance' })).not.toBeInTheDocument();
-  // A typed-in list cannot be chosen as the search target, so its text is never silently replaced.
-  const legacyOption = within(screen.getByLabelText('Adding to')).getByRole('option', { name: 'First dance (typed in)' });
-  expect(legacyOption).toBeDisabled();
+  expect(first.queryByLabelText('Search for the first dance song')).not.toBeInTheDocument();
   fireEvent.click(first.getByRole('button', { name: 'Use song search instead' }));
   expect(window.confirm).toHaveBeenCalled();
-  expect(first.getByRole('button', { name: 'Add to First dance' })).toBeInTheDocument();
+  expect(first.getByLabelText('Search for the first dance song')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled();
 });
 
@@ -413,8 +416,6 @@ test('playlist import is offered only for the big lists', async () => {
   expect(screen.getByRole('button', { name: 'Import a playlist' })).toBeInTheDocument();
   chooseList('Do not play');
   expect(screen.getByRole('button', { name: 'Import a playlist' })).toBeInTheDocument();
-  chooseList('First dance');
-  expect(screen.queryByRole('button', { name: 'Import a playlist' })).not.toBeInTheDocument();
   chooseList('Last song of the night');
   expect(screen.queryByRole('button', { name: 'Import a playlist' })).not.toBeInTheDocument();
 });
@@ -425,7 +426,7 @@ test('the search target falls back when the chosen list is typed-in text', async
   await screen.findByLabelText('Search for a song');
   // Must play is the usual default but is legacy text here, so the selector lands on the first usable list.
   await waitFor(() => expect(screen.getByLabelText('Adding to')).not.toHaveValue('mustPlay'));
-  expect(screen.getByLabelText('Adding to')).toHaveValue('firstDance');
+  expect(screen.getByLabelText('Adding to')).toHaveValue('doNotPlay');
   expect(within(screen.getByLabelText('Adding to')).getByRole('option', { name: 'Must play (typed in)' })).toBeDisabled();
   expect(picker('Must play').getByLabelText('Must play')).toHaveValue('Mr Brightside\nDancing Queen');
 });
@@ -509,4 +510,46 @@ test('an unsupported playlist link is explained and a duplicate is refused', asy
   fireEvent.change(lists.getByLabelText('Playlist link to add'), { target: { value: 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M?si=again' } });
   fireEvent.click(lists.getByRole('button', { name: 'Add playlist' }));
   expect(await lists.findByRole('alert')).toHaveTextContent('That playlist is already here.');
+});
+
+test('a couple can add dances, name them, pick a song for each, and remove one', async () => {
+  visit(`/plan/${TOKEN}`);
+  await screen.findByRole('group', { name: 'Other dances' });
+  const dances = picker('Other dances');
+  expect(dances.getByText(/Father and daughter, groom and mother/)).toBeInTheDocument();
+
+  fireEvent.click(dances.getByRole('button', { name: 'Add a dance' }));
+  const name = dances.getByLabelText('Name of dance 1');
+  expect(name).toHaveFocus();
+  fireEvent.change(name, { target: { value: 'Father and daughter' } });
+
+  const slot = within(screen.getByRole('group', { name: 'Dance: Father and daughter' }));
+  fireEvent.change(slot.getByLabelText('Search for the Father and daughter song'), { target: { value: 'bright' } });
+  await waitResults();
+  fireEvent.click(results().getByRole('button', { name: 'Add Mr Brightside by The Killers' }));
+  expect(slot.getByRole('button', { name: 'Remove Mr Brightside' })).toBeInTheDocument();
+  expect(slot.queryByLabelText(/Search for the/)).not.toBeInTheDocument();
+
+  fireEvent.click(dances.getByRole('button', { name: 'Add a dance' }));
+  fireEvent.change(dances.getByLabelText('Name of dance 2'), { target: { value: 'Groom and mother' } });
+  expect(dances.getByText('2 / 8')).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Send us your details' }));
+  await waitFor(() => expect(posts).toHaveLength(1));
+  expect(posts[0].answers.namedDances).toEqual([
+    { name: 'Father and daughter', song: CATALOGUE[2] },
+    { name: 'Groom and mother', song: null }
+  ]);
+
+  fireEvent.click(await dances.findByRole('button', { name: 'Remove dance Groom and mother' }));
+  expect(dances.queryByLabelText('Name of dance 2')).not.toBeInTheDocument();
+});
+
+test('parent dances saved before dances had names come back as named dances', async () => {
+  current = view({ answers: { parentDances: [song(300, 'My Girl', 'The Temptations')] }, submittedAt: 'x', updatedAt: 'x' });
+  visit(`/plan/${TOKEN}`);
+  await screen.findByRole('group', { name: 'Other dances' });
+  const dances = picker('Other dances');
+  expect(dances.getByLabelText('Name of dance 1')).toHaveValue('Parent dance');
+  expect(dances.getByRole('button', { name: 'Remove My Girl' })).toBeInTheDocument();
 });

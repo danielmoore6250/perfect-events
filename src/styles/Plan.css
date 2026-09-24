@@ -92,3 +92,18 @@ a.song__title:hover { text-decoration: underline; }
   .music__panel { grid-template-columns: 1fr; }
   .music__panel input[type='url'] { grid-column: auto; }
 }
+
+/* ---- Dances ----------------------------------------------------------- */
+
+.dances { list-style: none; display: flex; flex-direction: column; gap: 14px; }
+.dance { padding: 12px; border: 1px solid var(--border); border-radius: 10px; }
+.dance__head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.dance__name {
+  font: inherit; font-size: 16px; font-weight: 600; color: var(--text); flex: 1; min-width: 0;
+  background: transparent; border: 0; border-bottom: 1px solid var(--border-strong); border-radius: 0; padding: 6px 2px;
+}
+.dance__name::placeholder { font-weight: 400; color: var(--text-dim); }
+.dance__name:focus { outline: none; border-bottom-color: rgba(255, 255, 255, 0.6); }
+.finder { display: flex; flex-direction: column; gap: 8px; }
+.finder__manual { align-self: flex-start; padding: 0; font-size: 13px; }
+.finder--compact .music__input input { padding-top: 9px; padding-bottom: 9px; }

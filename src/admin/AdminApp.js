@@ -6,7 +6,8 @@ import '../styles/Admin.css';
 import { getSession, signIn, completeNewPassword, forgotPassword, confirmForgotPassword, clearSession } from './auth';
 import { listBookings, getBooking, updateBooking, getCalendarLink, rotateCalendarLink, calendarFeedUrl, createPlanningLink, planningFormUrl } from './api';
 import { EVENT_TYPE_LABELS, WEDDING_PACKAGE_LABELS, labelFor, formatEventDate, formatDateTime, PLANNING_SECTIONS, PLANNING_FIELD_LABELS, fieldApplies, answersToSetlistText } from '../shared/format';
-import { PreviewButton, SongArt, PlaylistLinkRow } from '../plan/MusicPlanner';
+import { PlaylistLinkRow } from '../plan/MusicPlanner';
+import { PreviewButton, SongArt } from '../plan/SongRow';
 import { subscribePreview, stopPreview } from '../shared/preview';
 
 const STATUSES = [
@@ -388,6 +389,8 @@ function SongAnswer({ value }) {
 }
 
 function PlanningCard({ booking, onBookingChange, onAuthLost }) {
+  const [playing, setPlaying] = useState(null);
+  useEffect(() => subscribePreview(setPlaying), []);
   const [copied, setCopied] = useState(false);
   const [copiedSetlist, setCopiedSetlist] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -485,6 +488,22 @@ function PlanningCard({ booking, onBookingChange, onAuthLost }) {
                       <dt>{PLANNING_FIELD_LABELS[f.key]}</dt>
                       {f.type === 'songs' ? (
                         <SongAnswer value={answers[f.key]} />
+                      ) : f.type === 'dances' ? (
+                        <dd>
+                          <ul className="songlist songlist--admin">
+                            {answers[f.key].map((dance, i) => (
+                              <li className="song song--dance" key={`${dance.name}:${i}`}>
+                                {dance.song ? <SongArt song={dance.song} /> : <span className="song__art song__art--blank" aria-hidden="true" />}
+                                <span className="song__text">
+                                  <span className="song__title">{dance.name || 'Dance'}</span>
+                                  <span className="song__artist muted small">{dance.song ? `${dance.song.artist ? `${dance.song.artist} – ` : ''}${dance.song.title}` : 'Song to be confirmed'}</span>
+                                </span>
+                                {dance.song && <PreviewButton song={dance.song} playing={playing} />}
+                                {dance.song?.url && <a className="button button--small" href={dance.song.url} target="_blank" rel="noreferrer">Open</a>}
+                              </li>
+                            ))}
+                          </ul>
+                        </dd>
                       ) : f.type === 'links' ? (
                         <dd>
                           <ul className="songlist songlist--admin">

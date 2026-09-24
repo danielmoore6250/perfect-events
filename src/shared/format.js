@@ -53,14 +53,20 @@ export const PLANNING_SECTIONS = [
     ]
   },
   {
-    title: 'Music',
-    hint: 'Search for songs and add them. Anything under "do not play" stays off, no exceptions.',
+    title: 'Dances',
+    hint: 'One song each. Add as many named dances as you like.',
     fields: [
       { key: 'firstDance', label: 'First dance', type: 'songs', max: 1, eventTypes: ['wedding'] },
-      { key: 'parentDances', label: 'Parent dances (if any)', type: 'songs', max: 5, eventTypes: ['wedding'] },
-      { key: 'lastSong', label: 'Last song of the night', type: 'songs', max: 1 },
+      { key: 'namedDances', label: 'Other dances', type: 'dances', max: 8, eventTypes: ['wedding'], hint: 'Father and daughter, groom and mother, the bridal party. Name each one and pick its song.' }
+    ]
+  },
+  {
+    title: 'Party music',
+    hint: 'Search for songs and add them. Anything under "do not play" stays off, no exceptions.',
+    fields: [
       { key: 'mustPlay', label: 'Must play', type: 'songs', max: 100, allowImport: true, hint: 'The ones the night is not complete without.' },
       { key: 'doNotPlay', label: 'Do not play', type: 'songs', max: 100, allowImport: true },
+      { key: 'lastSong', label: 'Last song of the night', type: 'songs', max: 1 },
       { key: 'playlistLinks', label: 'Playlists you love', type: 'links', max: 10, hint: 'Paste a Spotify, Apple Music, Deezer or YouTube playlist link. We open it in our own account.' },
       { key: 'musicStyle', label: 'What gets your crowd going?', type: 'long', placeholder: 'Eras, genres, artists, the vibe you want' },
       { key: 'announcements', label: 'Anything to announce?', type: 'long', placeholder: 'Cake cutting, toasts, a birthday in the room' }
@@ -96,13 +102,19 @@ export const songsToText = (value) => {
 
 export const PROVIDER_LABELS = { spotify: 'Spotify', apple: 'Apple Music', deezer: 'Deezer', youtube: 'YouTube' };
 
+const songText = (s) => (s.artist ? `${s.artist} – ${s.title}` : s.title);
+
+// Named dances as "Name: Artist – Title" lines.
+export const dancesToText = (value) =>
+  Array.isArray(value) ? value.filter((d) => d.name || d.song).map((d) => `${d.name || 'Dance'}: ${d.song ? songText(d.song) : 'song to be confirmed'}`).join('\n') : '';
+
 export const linksToText = (value) =>
   Array.isArray(value) ? value.map((l) => `${l.title || 'Playlist'} (${PROVIDER_LABELS[l.provider] || l.provider}) ${l.url}`).join('\n') : '';
 
 // Every song list and playlist link in the answers as one block of text, ready for a DJ's prep.
 export const answersToSetlistText = (answers = {}) =>
-  PLANNING_FIELDS.filter((f) => (f.type === 'songs' || f.type === 'links') && answers[f.key])
-    .map((f) => [f.label, f.type === 'songs' ? songsToText(answers[f.key]) : linksToText(answers[f.key])])
+  PLANNING_FIELDS.filter((f) => ['songs', 'links', 'dances'].includes(f.type) && answers[f.key])
+    .map((f) => [f.label, f.type === 'songs' ? songsToText(answers[f.key]) : f.type === 'links' ? linksToText(answers[f.key]) : dancesToText(answers[f.key])])
     .filter(([, text]) => text)
     .map(([label, text]) => `${label}\n${text}`)
     .join('\n\n');
