@@ -425,6 +425,7 @@ test('the planning card renders picked songs with artwork, an Open link, and cop
           { source: 'manual', id: null, title: 'Our song', artist: '', album: null, artwork: null, previewUrl: null, url: null, durationMs: null }
         ],
         doNotPlay: 'Cha Cha Slide',
+        playlistLinks: [{ url: 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M', provider: 'spotify', title: 'Our wedding vibes', thumbnail: null }],
         guestCount: 120
       },
       submittedAt: '2026-09-25T10:00:00.000Z',
@@ -437,7 +438,7 @@ test('the planning card renders picked songs with artwork, an Open link, and cop
   await screen.findByRole('heading', { name: 'Aoife Murphy' });
 
   const lists = screen.getAllByRole('list').filter((l) => l.className.includes('songlist'));
-  expect(lists).toHaveLength(2);
+  expect(lists).toHaveLength(3); // first dance, must play, playlist links
 
   const first = within(lists[0]);
   expect(first.getByText('Perfect')).toBeInTheDocument();
@@ -465,7 +466,12 @@ test('the planning card renders picked songs with artwork, an Open link, and cop
   expect(await first.findByRole('button', { name: 'Stop preview of Perfect' })).toBeInTheDocument();
   expect(must.queryByRole('button', { name: /Preview Our song/ })).not.toBeInTheDocument();
 
+  // Shared playlist links show with an Open link.
+  const playlistOpen = screen.getAllByRole('link', { name: 'Open' }).find((a) => a.getAttribute('href').includes('spotify'));
+  expect(playlistOpen).toBeTruthy();
+  expect(screen.getByRole('link', { name: 'Our wedding vibes' })).toHaveAttribute('href', 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M');
+
   fireEvent.click(screen.getByRole('button', { name: 'Copy song lists as text' }));
-  expect(writeText).toHaveBeenCalledWith('First dance\nEd Sheeran – Perfect\n\nMust play\nAugustana – Boston\nOur song\n\nDo not play\nCha Cha Slide');
+  expect(writeText).toHaveBeenCalledWith('First dance\nEd Sheeran – Perfect\n\nMust play\nAugustana – Boston\nOur song\n\nDo not play\nCha Cha Slide\n\nPlaylists you love\nOur wedding vibes (Spotify) https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M');
   expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument();
 });

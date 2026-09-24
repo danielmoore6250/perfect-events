@@ -313,10 +313,19 @@ artwork and previews instead of typing names.
   automatic fallback, so search works before the key exists and if it ever breaks.
   Results are normalised to one shape: `{ source, id, title, artist, album,
   artwork, previewUrl, durationMs, url }`. Cached per query for 10 minutes.
-- Spotify's API was ruled out: since February 2026 development-mode apps are
+- Spotify's API was ruled out for reading tracks: since February 2026 a
+  development-mode app can only read playlists the logged-in user owns, is
   capped at 5 named users and 10 search results, and extended access needs a
-  business with 250k monthly users. Spotify playlist links get a clear message.
-- Apple Music and Deezer playlist links import every track (up to 300).
+  business with 250k monthly users.
+- **Shared playlist links** instead: the client pastes a Spotify, Apple Music,
+  Deezer or YouTube playlist link under "Playlists you love". `GET /music/link`
+  resolves the provider, title and cover through each service's public embed-info
+  endpoint (Spotify's oEmbed still works for any public link) and strips tracking
+  parameters. The link is saved on the answers (`playlistLinks`, max 10), shows
+  in the admin card with Open, and is in the email and copy-as-text. Daniel opens
+  it in his own account.
+- Apple Music and Deezer links can additionally pull their tracks (up to 300)
+  into Must play with an "Import songs" button on the saved link.
 
 ### Data
 

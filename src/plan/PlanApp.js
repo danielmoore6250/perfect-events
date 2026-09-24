@@ -15,7 +15,7 @@ const tokenFromPath = () => {
 };
 
 const emptyAnswers = () =>
-  Object.fromEntries(PLANNING_FIELDS.map((f) => [f.key, f.type === 'songs' ? [] : '']));
+  Object.fromEntries(PLANNING_FIELDS.map((f) => [f.key, f.type === 'songs' || f.type === 'links' ? [] : '']));
 
 // Only the fields this form knows about; anything else on the record is left alone.
 const knownAnswers = (answers = {}) =>
@@ -174,14 +174,14 @@ export default function PlanApp() {
               {section.hint && <p className="muted small plan__hint">{section.hint}</p>}
               {fields.some((f) => f.type === 'songs') && (
                 <MusicPlanner
-                  fields={fields.filter((f) => f.type === 'songs')}
+                  fields={fields.filter((f) => f.type === 'songs' || f.type === 'links')}
                   answers={answers}
                   onChange={(key, value) => setValue(key)(value)}
                   disabled={locked || busy}
                 />
               )}
               <div className={['time', 'number'].includes(section.fields[0].type) ? 'plan__grid' : 'plan__stack'}>
-                {fields.filter((f) => f.type !== 'songs').map((f) => (
+                {fields.filter((f) => f.type !== 'songs' && f.type !== 'links').map((f) => (
                   <label className="field" key={f.key}>
                     <span>{f.label}</span>
                     {f.type === 'long' ? (

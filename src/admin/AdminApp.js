@@ -6,7 +6,7 @@ import '../styles/Admin.css';
 import { getSession, signIn, completeNewPassword, forgotPassword, confirmForgotPassword, clearSession } from './auth';
 import { listBookings, getBooking, updateBooking, getCalendarLink, rotateCalendarLink, calendarFeedUrl, createPlanningLink, planningFormUrl } from './api';
 import { EVENT_TYPE_LABELS, WEDDING_PACKAGE_LABELS, labelFor, formatEventDate, formatDateTime, PLANNING_SECTIONS, PLANNING_FIELD_LABELS, fieldApplies, answersToSetlistText } from '../shared/format';
-import { PreviewButton, SongArt } from '../plan/MusicPlanner';
+import { PreviewButton, SongArt, PlaylistLinkRow } from '../plan/MusicPlanner';
 import { subscribePreview, stopPreview } from '../shared/preview';
 
 const STATUSES = [
@@ -483,7 +483,19 @@ function PlanningCard({ booking, onBookingChange, onAuthLost }) {
                   .map((f) => (
                     <div key={f.key} className="planning__item">
                       <dt>{PLANNING_FIELD_LABELS[f.key]}</dt>
-                      {f.type === 'songs' ? <SongAnswer value={answers[f.key]} /> : <dd className="prewrap">{answers[f.key]}</dd>}
+                      {f.type === 'songs' ? (
+                        <SongAnswer value={answers[f.key]} />
+                      ) : f.type === 'links' ? (
+                        <dd>
+                          <ul className="songlist songlist--admin">
+                            {answers[f.key].map((link) => (
+                              <PlaylistLinkRow key={link.url} link={link} action={<a className="button button--small" href={link.url} target="_blank" rel="noreferrer">Open</a>} />
+                            ))}
+                          </ul>
+                        </dd>
+                      ) : (
+                        <dd className="prewrap">{answers[f.key]}</dd>
+                      )}
                     </div>
                   ))}
               </dl>

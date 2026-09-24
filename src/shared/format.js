@@ -61,6 +61,7 @@ export const PLANNING_SECTIONS = [
       { key: 'lastSong', label: 'Last song of the night', type: 'songs', max: 1 },
       { key: 'mustPlay', label: 'Must play', type: 'songs', max: 100, allowImport: true, hint: 'The ones the night is not complete without.' },
       { key: 'doNotPlay', label: 'Do not play', type: 'songs', max: 100, allowImport: true },
+      { key: 'playlistLinks', label: 'Playlists you love', type: 'links', max: 10, hint: 'Paste a Spotify, Apple Music, Deezer or YouTube playlist link. We open it in our own account.' },
       { key: 'musicStyle', label: 'What gets your crowd going?', type: 'long', placeholder: 'Eras, genres, artists, the vibe you want' },
       { key: 'announcements', label: 'Anything to announce?', type: 'long', placeholder: 'Cake cutting, toasts, a birthday in the room' }
     ]
@@ -93,10 +94,17 @@ export const songsToText = (value) => {
   return value.map((s) => (s.artist ? `${s.artist} – ${s.title}` : s.title)).join('\n');
 };
 
-// Every song list in the answers as one block of text, ready for a DJ's prep.
+export const PROVIDER_LABELS = { spotify: 'Spotify', apple: 'Apple Music', deezer: 'Deezer', youtube: 'YouTube' };
+
+export const linksToText = (value) =>
+  Array.isArray(value) ? value.map((l) => `${l.title || 'Playlist'} (${PROVIDER_LABELS[l.provider] || l.provider}) ${l.url}`).join('\n') : '';
+
+// Every song list and playlist link in the answers as one block of text, ready for a DJ's prep.
 export const answersToSetlistText = (answers = {}) =>
-  PLANNING_FIELDS.filter((f) => f.type === 'songs' && answers[f.key] && songsToText(answers[f.key]))
-    .map((f) => `${f.label}\n${songsToText(answers[f.key])}`)
+  PLANNING_FIELDS.filter((f) => (f.type === 'songs' || f.type === 'links') && answers[f.key])
+    .map((f) => [f.label, f.type === 'songs' ? songsToText(answers[f.key]) : linksToText(answers[f.key])])
+    .filter(([, text]) => text)
+    .map(([label, text]) => `${label}\n${text}`)
     .join('\n\n');
 
 export const PLANNING_FIELD_LABELS = Object.fromEntries(

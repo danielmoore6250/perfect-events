@@ -458,3 +458,46 @@ test('guest count is stored as a whole number and shown in the email', async () 
   }
   assert.equal((await handler(request('POST', TOKEN, { answers: { playIfPossible: [] } }))).statusCode, 400, 'play if possible is gone');
 });
+
+test('shared playlist links are stored with only the known keys and listed in the email', async () => {
+  const { handler } = loadModule();
+  const res = await handler(
+    request('POST', TOKEN, {
+      answers: {
+        playlistLinks: [
+          { url: 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M', provider: 'spotify', title: 'Our wedding vibes', thumbnail: 'https://i.scdn.co/image/abc', importable: false, extra: 'dropped' },
+          { url: 'https://www.youtube.com/playlist?list=PLabc', provider: 'youtube', title: null, thumbnail: null }
+        ]
+      }
+    })
+  );
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(store['abc-123'].planning.answers.playlistLinks, [
+    { url: 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M', provider: 'spotify', title: 'Our wedding vibes', thumbnail: 'https://i.scdn.co/image/abc' },
+    { url: 'https://www.youtube.com/playlist?list=PLabc', provider: 'youtube', title: null, thumbnail: null }
+  ]);
+  const text = emails[0].Content.Simple.Body.Text.Data;
+  assert.ok(text.includes('Playlists: Our wedding vibes (Spotify) https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M\nPlaylist (YouTube) https://www.youtube.com/playlist?list=PLabc'));
+  const html = emails[0].Content.Simple.Body.Html.Data;
+  assert.ok(html.includes('Our wedding vibes (Spotify) https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M'));
+});
+
+test('playlist links are validated', async () => {
+  const { handler } = loadModule();
+  const bad = [
+    [{ playlistLinks: 'https://open.spotify.com/playlist/x' }, /must be a list of links/],
+    [{ playlistLinks: ['https://open.spotify.com/playlist/x'] }, /entries must be links/],
+    [{ playlistLinks: [{ url: 'http://open.spotify.com/playlist/x', provider: 'spotify' }] }, /Spotify, Apple Music, Deezer or YouTube/],
+    [{ playlistLinks: [{ url: 'https://example.com/playlist/x', provider: 'spotify' }] }, /Spotify, Apple Music, Deezer or YouTube/],
+    [{ playlistLinks: [{ url: 'https://open.spotify.com/playlist/x', provider: 'tidal' }] }, /unknown provider/],
+    [{ playlistLinks: [{ url: 'https://open.spotify.com/playlist/x', provider: 'spotify', thumbnail: 'javascript:alert(1)' }] }, /https link/],
+    [{ playlistLinks: [{ url: 'https://open.spotify.com/playlist/x', provider: 'spotify', title: 42 }] }, /must be text/],
+    [{ playlistLinks: Array(11).fill({ url: 'https://open.spotify.com/playlist/x', provider: 'spotify' }) }, /at most 10/]
+  ];
+  for (const [answers, pattern] of bad) {
+    const res = await handler(request('POST', TOKEN, { answers }));
+    assert.equal(res.statusCode, 400, JSON.stringify(answers).slice(0, 80));
+    assert.match(JSON.parse(res.body).error, pattern);
+  }
+  assert.equal(updates().length, 0);
+});

@@ -49,6 +49,10 @@
   background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-strong); border-radius: 8px; padding: 10px 12px;
 }
 .music__panel input[type='url'] { grid-column: 1 / 3; }
+.music__panel--link { grid-template-columns: 1fr auto; margin-top: 8px; }
+.music__panel--link input[type='url'] { grid-column: auto; }
+a.song__title { color: var(--text); text-decoration: none; }
+a.song__title:hover { text-decoration: underline; }
 
 .music__lists { display: flex; flex-direction: column; }
 .music__list { padding: 14px 0; border-top: 1px solid var(--border); }

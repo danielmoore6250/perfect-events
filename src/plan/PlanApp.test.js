@@ -62,6 +62,12 @@ beforeEach(() => {
       searches.push(q);
       return jsonResponse(200, { source: 'apple', songs: CATALOGUE.filter((s) => s.title.toLowerCase().includes(q)) });
     }
+    if (url.startsWith(`${API_BASE}/music/link`)) {
+      const link = new URL(url).searchParams.get('url');
+      if (link.includes('spotify')) return jsonResponse(200, { provider: 'spotify', providerLabel: 'Spotify', url: 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M', title: 'Our wedding vibes', thumbnail: 'https://i.scdn.co/image/abc', importable: false });
+      if (link.includes('deezer')) return jsonResponse(200, { provider: 'deezer', providerLabel: 'Deezer', url: 'https://www.deezer.com/playlist/3155776842', title: 'Top Worldwide', thumbnail: null, importable: true });
+      return jsonResponse(400, { error: 'Paste a Spotify, Apple Music, Deezer or YouTube playlist link' });
+    }
     if (url.startsWith(`${API_BASE}/music/playlist`)) {
       const link = new URL(url).searchParams.get('url');
       if (link.includes('spotify')) return jsonResponse(400, { error: 'Spotify playlists cannot be imported.' });
@@ -450,4 +456,57 @@ test('the guest count starts from the enquiry, is editable, and a saved value wi
   current = view({ answers: { guestCount: 95 }, submittedAt: 'x', updatedAt: 'x' });
   visit(`/plan/${TOKEN}`);
   expect(await screen.findByLabelText('Number of guests')).toHaveValue(95);
+});
+
+test('a shared Spotify playlist link is saved with its title, shows an open link, and cannot import songs', async () => {
+  visit(`/plan/${TOKEN}`);
+  await screen.findByLabelText('Search for a song');
+  const lists = picker('Playlists you love');
+  expect(lists.getByText(/Paste a Spotify, Apple Music, Deezer or YouTube playlist link/)).toBeInTheDocument();
+
+  fireEvent.change(lists.getByLabelText('Playlist link to add'), { target: { value: 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M?si=xyz' } });
+  fireEvent.click(lists.getByRole('button', { name: 'Add playlist' }));
+
+  const open = await lists.findByRole('link', { name: 'Our wedding vibes' });
+  expect(open).toHaveAttribute('href', 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M');
+  expect(lists.getByText('Spotify')).toBeInTheDocument();
+  expect(lists.queryByRole('button', { name: /Import songs/ })).not.toBeInTheDocument();
+  expect(lists.getByText('1 / 10')).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Send us your details' }));
+  await waitFor(() => expect(posts).toHaveLength(1));
+  expect(posts[0].answers.playlistLinks).toEqual([
+    { url: 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M', provider: 'spotify', title: 'Our wedding vibes', thumbnail: 'https://i.scdn.co/image/abc' }
+  ]);
+
+  // Controls come back once the save has finished.
+  fireEvent.click(await lists.findByRole('button', { name: 'Remove Our wedding vibes' }));
+  expect(lists.queryByRole('link', { name: 'Our wedding vibes' })).not.toBeInTheDocument();
+});
+
+test('a Deezer playlist link can also pull its songs into Must play', async () => {
+  visit(`/plan/${TOKEN}`);
+  await screen.findByLabelText('Search for a song');
+  const lists = picker('Playlists you love');
+  fireEvent.change(lists.getByLabelText('Playlist link to add'), { target: { value: 'https://www.deezer.com/en/playlist/3155776842' } });
+  fireEvent.click(lists.getByRole('button', { name: 'Add playlist' }));
+  fireEvent.click(await lists.findByRole('button', { name: 'Import songs from Top Worldwide' }));
+  expect(await screen.findByRole('status')).toHaveTextContent('Added 2 songs to Must play.');
+  expect(picker('Must play').getByRole('button', { name: 'Remove Dancing Queen' })).toBeInTheDocument();
+});
+
+test('an unsupported playlist link is explained and a duplicate is refused', async () => {
+  visit(`/plan/${TOKEN}`);
+  await screen.findByLabelText('Search for a song');
+  const lists = picker('Playlists you love');
+  fireEvent.change(lists.getByLabelText('Playlist link to add'), { target: { value: 'https://tidal.com/playlist/x' } });
+  fireEvent.click(lists.getByRole('button', { name: 'Add playlist' }));
+  expect(await lists.findByRole('alert')).toHaveTextContent('Paste a Spotify, Apple Music, Deezer or YouTube playlist link');
+
+  fireEvent.change(lists.getByLabelText('Playlist link to add'), { target: { value: 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M' } });
+  fireEvent.click(lists.getByRole('button', { name: 'Add playlist' }));
+  await lists.findByRole('link', { name: 'Our wedding vibes' });
+  fireEvent.change(lists.getByLabelText('Playlist link to add'), { target: { value: 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M?si=again' } });
+  fireEvent.click(lists.getByRole('button', { name: 'Add playlist' }));
+  expect(await lists.findByRole('alert')).toHaveTextContent('That playlist is already here.');
 });

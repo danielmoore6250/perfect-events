@@ -81,6 +81,9 @@ beforeEach(() => {
         const term = u.searchParams.get('term');
         return json({ results: { songs: { data: [appleSong('100', `${term} (Apple)`, 'Ed Sheeran'), appleSong('101', 'Perfect Symphony', 'Ed Sheeran & Andrea Bocelli')] } } });
       }
+      if (u.pathname === '/v1/catalog/gb/playlists/pl.u-abc') {
+        return json({ data: [{ attributes: { name: 'Wedding bangers', artwork: { url: 'https://is1-ssl.mzstatic.com/x/{w}x{h}bb.jpg' } } }] });
+      }
       if (u.pathname === '/v1/catalog/gb/songs/100') {
         return json({ data: [appleSong('100', 'Perfect', 'Ed Sheeran')] });
       }
@@ -94,7 +97,16 @@ beforeEach(() => {
       return json({ errors: [] }, 404);
     }
 
+    if (u.hostname === 'open.spotify.com' && u.pathname === '/oembed') {
+      return json({ title: 'Today’s Top Hits', thumbnail_url: 'https://i.scdn.co/image/abc', provider_name: 'Spotify' });
+    }
+    if (u.hostname === 'www.youtube.com' && u.pathname === '/oembed') {
+      return json({ title: 'Popular Music Videos', thumbnail_url: 'https://i.ytimg.com/vi/x/hqdefault.jpg' });
+    }
     if (u.hostname === 'api.deezer.com') {
+      if (u.pathname === '/oembed') {
+        return json({ title: 'Top Worldwide', thumbnail_url: 'https://cdn-images.dzcdn.net/p/1000x1000.jpg' });
+      }
       if (u.pathname === '/track/142986206') {
         return json({ ...deezerTrack(142986206, 'Perfect', 'Ed Sheeran'), preview: `https://cdnt-preview.dzcdn.net/fresh.mp3?hdnea=exp=${Math.floor(Date.now() / 1000) + 900}` });
       }
@@ -324,4 +336,47 @@ test('the preview route rejects bad input and reports missing previews', async (
   appleConfigured = false;
   const { handler: noApple } = loadModule();
   assert.equal((await noApple(request('/music/preview', { source: 'apple', id: '100' }))).statusCode, 503);
+});
+
+test('a shared playlist link resolves to its provider, title and cover, with tracking stripped', async () => {
+  const { handler } = loadModule();
+  const cases = [
+    ['https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M?si=abc123&utm_source=copy', { provider: 'spotify', providerLabel: 'Spotify', url: 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M', title: 'Today’s Top Hits', thumbnail: 'https://i.scdn.co/image/abc', importable: false }],
+    ['https://www.deezer.com/en/playlist/3155776842', { provider: 'deezer', providerLabel: 'Deezer', url: 'https://www.deezer.com/en/playlist/3155776842', title: 'Top Worldwide', thumbnail: 'https://cdn-images.dzcdn.net/p/1000x1000.jpg', importable: true }],
+    ['https://www.youtube.com/playlist?list=PLabc&feature=share', { provider: 'youtube', providerLabel: 'YouTube', url: 'https://www.youtube.com/playlist?list=PLabc', title: 'Popular Music Videos', thumbnail: 'https://i.ytimg.com/vi/x/hqdefault.jpg', importable: false }],
+    ['https://music.apple.com/gb/playlist/wedding-bangers/pl.u-abc', { provider: 'apple', providerLabel: 'Apple Music', url: 'https://music.apple.com/gb/playlist/wedding-bangers/pl.u-abc', title: 'Wedding bangers', thumbnail: 'https://is1-ssl.mzstatic.com/x/400x400bb.jpg', importable: true }]
+  ];
+  for (const [url, expected] of cases) {
+    const res = await handler(request('/music/link', { url }));
+    assert.equal(res.statusCode, 200, url);
+    assert.deepEqual(JSON.parse(res.body), expected);
+  }
+});
+
+test('a playlist link keeps working as a link when the title lookup fails', async () => {
+  appleConfigured = false;
+  const { handler } = loadModule();
+  const res = await handler(request('/music/link', { url: 'https://music.apple.com/gb/playlist/x/pl.u-abc' }));
+  assert.equal(res.statusCode, 200);
+  const body = JSON.parse(res.body);
+  assert.equal(body.provider, 'apple');
+  assert.equal(body.title, null);
+  assert.equal(body.importable, true);
+});
+
+test('playlist links are validated', async () => {
+  const { handler } = loadModule();
+  const cases = [
+    ['', 400, /url is required/],
+    ['not a link', 400, /does not look like a link/],
+    ['http://open.spotify.com/playlist/abc', 400, /https/],
+    ['https://example.com/playlist/1', 400, /Spotify, Apple Music, Deezer or YouTube/],
+    ['https://open.spotify.com/track/abc', 400, /not a playlist/],
+    ['https://www.deezer.com/en/track/1', 400, /not a playlist/]
+  ];
+  for (const [url, status, pattern] of cases) {
+    const res = await handler(request('/music/link', { url }));
+    assert.equal(res.statusCode, status, url);
+    assert.match(JSON.parse(res.body).error, pattern);
+  }
 });

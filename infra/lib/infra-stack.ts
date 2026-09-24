@@ -379,6 +379,8 @@ export class InfraStack extends cdk.Stack {
     httpApi.addRoutes({ path: '/music/playlist', methods: [apigatewayv2.HttpMethod.GET], integration: musicIntegration });
     // 302 to a fresh preview link; stored ones expire (see the Lambda).
     httpApi.addRoutes({ path: '/music/preview', methods: [apigatewayv2.HttpMethod.GET], integration: musicIntegration });
+    // Title and cover for a shared playlist link (any of the four services).
+    httpApi.addRoutes({ path: '/music/link', methods: [apigatewayv2.HttpMethod.GET], integration: musicIntegration });
 
     // Stage-wide throttle. Per-route settings were tried first and bit twice:
     // CloudFormation applies the stage before new routes exist, and a rollback
