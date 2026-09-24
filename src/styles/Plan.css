@@ -33,7 +33,11 @@
 /* The finder sits in the bar's second column; its results and "type it in"
    drop below, across both columns. */
 .music__bar .finder { display: contents; }
-.music__bar .finder > :not(.music__input) { grid-column: 1 / -1; }
+/* The search box sits beside the select, bottoms aligned, natural height. */
+.music__bar .finder > .music__input { grid-column: 2; align-self: end; width: auto; }
+/* Everything else the finder shows drops below, across both columns, left-aligned. */
+.music__bar .finder > :not(.music__input) { grid-column: 1 / -1; justify-self: start; }
+.music__bar .finder > .songlist--results { justify-self: stretch; }
 .music__input svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
 .music__input input {
   font: inherit; font-size: 16px; color: var(--text); width: 100%;
@@ -94,6 +98,7 @@ a.song__title:hover { text-decoration: underline; }
 
 @media (max-width: 600px) {
   .music__bar { grid-template-columns: 1fr; }
+  .music__bar .finder > .music__input { grid-column: 1; }
   .music__panel { grid-template-columns: 1fr; }
   .music__panel input[type='url'] { grid-column: auto; }
 }
