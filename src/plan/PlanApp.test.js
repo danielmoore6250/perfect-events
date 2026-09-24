@@ -5,6 +5,7 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import PlanApp from './PlanApp';
 import { API_BASE } from '../config';
+import { PLANNING_FIELDS } from '../shared/format';
 import { stopPreview } from '../shared/preview';
 
 const TOKEN = 'planXYZ123_abcdefghijklmnopqrstu';
@@ -85,32 +86,38 @@ const visit = (path) => {
 };
 
 const picker = (label) => within(screen.getByRole('group', { name: label }));
+const finder = () => screen.getByLabelText('Search for a song');
+const chooseList = (label) => fireEvent.change(screen.getByLabelText('Adding to'), { target: { value: PLANNING_FIELDS.find((f) => f.label === label).key } });
+const search = (text) => fireEvent.change(finder(), { target: { value: text } });
+const results = () => within(screen.getByRole('list', { name: 'Search results' }));
+const waitResults = () => screen.findByRole('list', { name: 'Search results' });
 
-const searchIn = (label, text) => fireEvent.change(picker(label).getByLabelText(`Search songs for ${label}`), { target: { value: text } });
-
-test('greets the client by first name with their event details and wedding-only pickers', async () => {
+test('greets the client by first name with their event details and wedding-only lists', async () => {
   visit(`/plan/${TOKEN}`);
   expect(await screen.findByRole('heading', { name: "Hi Aoife, let's plan your wedding" })).toBeInTheDocument();
   expect(screen.getByText(/Friday 12 June 2099 · Galgorm Resort · Full night/)).toBeInTheDocument();
   expect(screen.getByRole('group', { name: 'First dance' })).toBeInTheDocument();
   expect(screen.getByRole('group', { name: 'Play if possible' })).toBeInTheDocument();
   expect(screen.getByLabelText('Speeches')).toBeInTheDocument();
+  expect(screen.getAllByLabelText('Search for a song')).toHaveLength(1);
+  expect(screen.getByLabelText('Adding to')).toHaveValue('mustPlay');
   expect(screen.getByRole('button', { name: 'Send us your details' })).toBeDisabled();
 });
 
-test('a corporate event hides the wedding-only fields', async () => {
+test('a corporate event hides the wedding-only fields and lists', async () => {
   current = view({ eventType: 'corporate', eventTypeLabel: 'corporate event', weddingPackage: null });
   visit(`/plan/${TOKEN}`);
   await screen.findByRole('heading', { name: "Hi Aoife, let's plan your corporate event" });
   expect(screen.queryByRole('group', { name: 'First dance' })).not.toBeInTheDocument();
   expect(screen.queryByLabelText('Speeches')).not.toBeInTheDocument();
   expect(screen.getByRole('group', { name: 'Last song of the night' })).toBeInTheDocument();
+  expect(within(screen.getByLabelText('Adding to')).queryByRole('option', { name: /First dance/ })).not.toBeInTheDocument();
 });
 
 test('a bad link shows a clear message and never renders the form', async () => {
   visit('/plan/not-a-real-token');
   expect(await screen.findByRole('heading', { name: "This link isn't right" })).toBeInTheDocument();
-  expect(screen.queryByRole('group', { name: 'First dance' })).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Search for a song')).not.toBeInTheDocument();
 });
 
 test('a malformed path is treated as a bad link without calling the API', async () => {
@@ -119,57 +126,78 @@ test('a malformed path is treated as a bad link without calling the API', async 
   expect(global.fetch).not.toHaveBeenCalled();
 });
 
-test('searching shows results with a preview, adding a song fills the list, and a single-song list closes the search', async () => {
+test('the Add shortcut on a list points the search at it; adding to a one-song list fills it and closes the search', async () => {
   visit(`/plan/${TOKEN}`);
   await screen.findByRole('group', { name: 'First dance' });
 
-  searchIn('First dance', 'perf');
-  const addPerfect = await picker('First dance').findByRole('button', { name: 'Add Perfect by Ed Sheeran' });
-  expect(picker('First dance').getByRole('button', { name: 'Add Perfect Symphony by Ed Sheeran & Andrea Bocelli' })).toBeInTheDocument();
+  fireEvent.click(picker('First dance').getByRole('button', { name: 'Add to First dance' }));
+  expect(screen.getByLabelText('Adding to')).toHaveValue('firstDance');
+  expect(finder()).toHaveFocus();
+
+  search('perf');
+  await waitResults();
+  const addPerfect = results().getByRole('button', { name: 'Add Perfect by Ed Sheeran' });
+  expect(results().getByRole('button', { name: 'Add Perfect Symphony by Ed Sheeran & Andrea Bocelli' })).toBeInTheDocument();
   expect(searches).toEqual(['perf']);
 
   // Preview toggles through the shared player, streaming via our own route so
   // the link is always fresh (stored Deezer links expire within minutes).
   const playSpy = window.HTMLMediaElement.prototype.play;
-  fireEvent.click(picker('First dance').getByRole('button', { name: 'Preview Perfect' }));
+  fireEvent.click(results().getByRole('button', { name: 'Preview Perfect' }));
   expect(playSpy).toHaveBeenCalled();
-  const audio = playSpy.mock.instances[0];
-  expect(audio.src).toBe(`${API_BASE}/music/preview?source=apple&id=100`);
-  expect(await picker('First dance').findByRole('button', { name: 'Stop preview of Perfect' })).toBeInTheDocument();
+  expect(playSpy.mock.instances[0].src).toBe(`${API_BASE}/music/preview?source=apple&id=100`);
+  expect(await results().findByRole('button', { name: 'Stop preview of Perfect' })).toBeInTheDocument();
 
   fireEvent.click(addPerfect);
   expect(picker('First dance').getByRole('button', { name: 'Remove Perfect' })).toBeInTheDocument();
-  // max 1: the search box is gone until the song is removed
-  expect(picker('First dance').queryByLabelText('Search songs for First dance')).not.toBeInTheDocument();
-  expect(picker('First dance').getByText('Remove it to choose a different song.')).toBeInTheDocument();
+  expect(picker('First dance').queryByRole('button', { name: 'Add to First dance' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('list', { name: 'Search results' })).not.toBeInTheDocument();
+  expect(finder()).toBeDisabled();
+  expect(screen.getByText(/Remove the current first dance song/)).toBeInTheDocument();
+  expect(within(screen.getByLabelText('Adding to')).getByRole('option', { name: 'First dance (full)' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Send us your details' })).toBeEnabled();
 
   fireEvent.click(picker('First dance').getByRole('button', { name: 'Remove Perfect' }));
-  expect(picker('First dance').getByLabelText('Search songs for First dance')).toBeInTheDocument();
+  expect(finder()).toBeEnabled();
   expect(screen.getByRole('button', { name: 'Send us your details' })).toBeDisabled();
 });
 
 test('search is debounced and only the last query is sent', async () => {
   visit(`/plan/${TOKEN}`);
-  await screen.findByRole('group', { name: 'Must play' });
-  searchIn('Must play', 'm');
-  searchIn('Must play', 'mr');
-  searchIn('Must play', 'mr b');
-  await picker('Must play').findByRole('button', { name: 'Add Mr Brightside by The Killers' });
+  await screen.findByLabelText('Search for a song');
+  search('m');
+  search('mr');
+  search('mr b');
+  await waitResults();
   expect(searches).toEqual(['mr b']);
 });
 
-test('a song the catalogue does not have can be typed in', async () => {
+test('adding to a multi-song list keeps the results open and marks what is already added', async () => {
   visit(`/plan/${TOKEN}`);
-  await screen.findByRole('group', { name: 'Do not play' });
-  const dnp = picker('Do not play');
-  fireEvent.click(dnp.getByRole('button', { name: "Can't find it? Type it in" }));
-  fireEvent.change(dnp.getByLabelText('Song title for Do not play'), { target: { value: 'Our terrible song' } });
-  fireEvent.change(dnp.getByLabelText('Artist for Do not play'), { target: { value: 'Uncle Pat' } });
-  fireEvent.click(dnp.getByRole('button', { name: 'Add' }));
+  await screen.findByLabelText('Search for a song');
+  search('perf');
+  await waitResults();
+  fireEvent.click(results().getByRole('button', { name: 'Add Perfect by Ed Sheeran' }));
+  expect(results().getByRole('button', { name: 'Add Perfect by Ed Sheeran' })).toHaveTextContent('Added');
+  expect(results().getByRole('button', { name: 'Add Perfect by Ed Sheeran' })).toBeDisabled();
+  fireEvent.click(results().getByRole('button', { name: 'Add Perfect Symphony by Ed Sheeran & Andrea Bocelli' }));
+  expect(picker('Must play').getAllByRole('button', { name: /^Remove / })).toHaveLength(2);
+  expect(picker('Must play').getByText('2 / 100')).toBeInTheDocument();
+});
 
+test('a song the catalogue does not have can be typed in to the chosen list', async () => {
+  visit(`/plan/${TOKEN}`);
+  await screen.findByLabelText('Search for a song');
+  chooseList('Do not play');
+  fireEvent.click(screen.getByRole('button', { name: "Can't find it? Type it in" }));
+  fireEvent.change(screen.getByLabelText('Song title'), { target: { value: 'Our terrible song' } });
+  fireEvent.change(screen.getByLabelText('Artist'), { target: { value: 'Uncle Pat' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Add typed-in song to Do not play' }));
+
+  const dnp = picker('Do not play');
   expect(dnp.getByText('Our terrible song')).toBeInTheDocument();
   expect(dnp.getByText('Uncle Pat')).toBeInTheDocument();
+  expect(screen.queryByLabelText('Song title')).not.toBeInTheDocument();
 
   fireEvent.click(screen.getByRole('button', { name: 'Send us your details' }));
   await waitFor(() => expect(posts).toHaveLength(1));
@@ -178,45 +206,45 @@ test('a song the catalogue does not have can be typed in', async () => {
   ]);
 });
 
-test('a playlist link imports its songs into Must play, skipping ones already there', async () => {
+test('a playlist link imports its songs into the chosen list, skipping ones already there', async () => {
   visit(`/plan/${TOKEN}`);
-  await screen.findByRole('group', { name: 'Must play' });
+  await screen.findByLabelText('Search for a song');
+  search('bright');
+  await waitResults();
+  fireEvent.click(results().getByRole('button', { name: 'Add Mr Brightside by The Killers' }));
+
+  fireEvent.click(screen.getByRole('button', { name: 'Import a playlist' }));
+  fireEvent.change(screen.getByLabelText('Playlist link'), { target: { value: 'https://music.apple.com/gb/playlist/x/pl.u-abc' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Import to Must play' }));
+
+  expect(await screen.findByRole('status')).toHaveTextContent('Added 1 song to Must play.');
   const must = picker('Must play');
-
-  searchIn('Must play', 'bright');
-  fireEvent.click(await must.findByRole('button', { name: 'Add Mr Brightside by The Killers' }));
-
-  fireEvent.change(must.getByLabelText('Playlist link to import into Must play'), { target: { value: 'https://music.apple.com/gb/playlist/x/pl.u-abc' } });
-  fireEvent.click(must.getByRole('button', { name: 'Import playlist' }));
-
-  expect(await must.findByText('Added 1 song.')).toBeInTheDocument();
   expect(must.getByRole('button', { name: 'Remove Dancing Queen' })).toBeInTheDocument();
   expect(must.getAllByRole('button', { name: /^Remove / })).toHaveLength(2);
   expect(must.getByText('2 / 100')).toBeInTheDocument();
-
-  // Only Must play offers import.
-  expect(picker('Do not play').queryByLabelText(/Playlist link/)).not.toBeInTheDocument();
 });
 
 test('a Spotify playlist link gets the explanation from the service', async () => {
   visit(`/plan/${TOKEN}`);
-  await screen.findByRole('group', { name: 'Must play' });
-  const must = picker('Must play');
-  fireEvent.change(must.getByLabelText('Playlist link to import into Must play'), { target: { value: 'https://open.spotify.com/playlist/abc' } });
-  fireEvent.click(must.getByRole('button', { name: 'Import playlist' }));
-  expect(await must.findByText('Spotify playlists cannot be imported.')).toBeInTheDocument();
+  await screen.findByLabelText('Search for a song');
+  fireEvent.click(screen.getByRole('button', { name: 'Import a playlist' }));
+  fireEvent.change(screen.getByLabelText('Playlist link'), { target: { value: 'https://open.spotify.com/playlist/abc' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Import to Must play' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Spotify playlists cannot be imported.');
 });
 
 test('sending posts the picked songs and time fields, then allows editing again', async () => {
   visit(`/plan/${TOKEN}`);
-  await screen.findByRole('group', { name: 'First dance' });
+  await screen.findByLabelText('Search for a song');
 
   fireEvent.change(screen.getByLabelText('DJ starts'), { target: { value: '19:30' } });
-  searchIn('First dance', 'perfect');
-  fireEvent.click(await picker('First dance').findByRole('button', { name: 'Add Perfect by Ed Sheeran' }));
+  chooseList('First dance');
+  search('perfect');
+  await waitResults();
+  fireEvent.click(results().getByRole('button', { name: 'Add Perfect by Ed Sheeran' }));
 
   fireEvent.click(screen.getByRole('button', { name: 'Send us your details' }));
-  expect(await screen.findByRole('status')).toHaveTextContent(/Saved\. We've got your details/);
+  expect(await screen.findByText(/Saved\. We've got your details/)).toBeInTheDocument();
 
   expect(posts).toHaveLength(1);
   expect(posts[0].answers.djStartTime).toBe('19:30');
@@ -226,8 +254,10 @@ test('sending posts the picked songs and time fields, then allows editing again'
   const save = screen.getByRole('button', { name: 'Save changes' });
   expect(save).toBeDisabled();
 
-  searchIn('Last song of the night', 'bright');
-  fireEvent.click(await picker('Last song of the night').findByRole('button', { name: 'Add Mr Brightside by The Killers' }));
+  chooseList('Last song of the night');
+  search('bright');
+  await waitResults();
+  fireEvent.click(results().getByRole('button', { name: 'Add Mr Brightside by The Killers' }));
   expect(save).toBeEnabled();
   fireEvent.click(save);
   await waitFor(() => expect(posts).toHaveLength(2));
@@ -251,25 +281,26 @@ test('previous song picks are shown on return, and legacy typed text is editable
 
   const first = picker('First dance');
   expect(first.getByLabelText('First dance')).toHaveValue('Yellow – Coldplay');
+  expect(first.queryByRole('button', { name: 'Add to First dance' })).not.toBeInTheDocument();
   fireEvent.click(first.getByRole('button', { name: 'Use song search instead' }));
   expect(window.confirm).toHaveBeenCalled();
-  expect(first.getByLabelText('Search songs for First dance')).toBeInTheDocument();
+  expect(first.getByRole('button', { name: 'Add to First dance' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled();
 });
 
-test('a locked form is read-only with an explanation', async () => {
+test('a locked form is read-only with an explanation and no search', async () => {
   current = view({ locked: true, answers: { firstDance: 'Yellow – Coldplay', mustPlay: [song(200, 'Mr Brightside', 'The Killers')] }, submittedAt: 'x', updatedAt: 'x' });
   visit(`/plan/${TOKEN}`);
   expect(await screen.findByRole('alert')).toHaveTextContent(/now locked/);
   expect(picker('First dance').getByLabelText('First dance')).toBeDisabled();
   expect(picker('Must play').queryByRole('button', { name: /^Remove / })).not.toBeInTheDocument();
-  expect(picker('Must play').queryByLabelText(/Search songs/)).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Search for a song')).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /Save|Send/ })).not.toBeInTheDocument();
 });
 
 test('a server error on save is shown and the answers are kept', async () => {
   visit(`/plan/${TOKEN}`);
-  await screen.findByRole('group', { name: 'First dance' });
+  await screen.findByLabelText('Search for a song');
   fireEvent.change(screen.getByLabelText('Anything else we should know?'), { target: { value: 'X' } });
   global.fetch.mockImplementationOnce(async () => jsonResponse(400, { error: 'djStartTime must be a time like 19:30' }));
   fireEvent.click(screen.getByRole('button', { name: 'Send us your details' }));
@@ -279,7 +310,7 @@ test('a server error on save is shown and the answers are kept', async () => {
 
 test('a 423 on save puts the page into the locked state instead of leaving it editable', async () => {
   visit(`/plan/${TOKEN}`);
-  await screen.findByRole('group', { name: 'First dance' });
+  await screen.findByLabelText('Search for a song');
   fireEvent.change(screen.getByLabelText('Anything else we should know?'), { target: { value: 'X' } });
   current = { ...current, locked: true };
   fireEvent.click(screen.getByRole('button', { name: 'Send us your details' }));
@@ -307,18 +338,17 @@ test('a search response that arrives after the text changed is discarded', async
   });
 
   visit(`/plan/${TOKEN}`);
-  await screen.findByRole('group', { name: 'Must play' });
-  searchIn('Must play', 'slow');
+  await screen.findByLabelText('Search for a song');
+  search('slow');
   await waitFor(() => expect(searches).toContain('slow'));
 
-  // The client moves on before the slow response lands.
-  searchIn('Must play', 'bright');
-  await picker('Must play').findByRole('button', { name: 'Add Mr Brightside by The Killers' });
+  search('bright');
+  await waitResults();
   resolveSlow();
   await new Promise((r) => setTimeout(r, 20));
 
-  expect(picker('Must play').queryByText('Stale result')).not.toBeInTheDocument();
-  expect(picker('Must play').getByRole('button', { name: 'Add Mr Brightside by The Killers' })).toBeInTheDocument();
+  expect(screen.queryByText('Stale result')).not.toBeInTheDocument();
+  expect(results().getByRole('button', { name: 'Add Mr Brightside by The Killers' })).toBeInTheDocument();
 });
 
 test('starting a second preview while the first is still starting keeps the second marked as playing', async () => {
@@ -329,17 +359,17 @@ test('starting a second preview while the first is still starting keeps the seco
     .mockResolvedValue();
 
   visit(`/plan/${TOKEN}`);
-  await screen.findByRole('group', { name: 'First dance' });
-  searchIn('First dance', 'perf');
-  await picker('First dance').findByRole('button', { name: 'Preview Perfect' });
+  await screen.findByLabelText('Search for a song');
+  search('perf');
+  await waitResults();
 
-  fireEvent.click(picker('First dance').getByRole('button', { name: 'Preview Perfect' }));
-  fireEvent.click(picker('First dance').getByRole('button', { name: 'Preview Perfect Symphony' }));
+  fireEvent.click(results().getByRole('button', { name: 'Preview Perfect' }));
+  fireEvent.click(results().getByRole('button', { name: 'Preview Perfect Symphony' }));
   rejectFirst(new Error('interrupted'));
   await new Promise((r) => setTimeout(r, 0));
 
-  expect(picker('First dance').getByRole('button', { name: 'Stop preview of Perfect Symphony' })).toBeInTheDocument();
-  expect(picker('First dance').getByRole('button', { name: 'Preview Perfect' })).toBeInTheDocument();
+  expect(results().getByRole('button', { name: 'Stop preview of Perfect Symphony' })).toBeInTheDocument();
+  expect(results().getByRole('button', { name: 'Preview Perfect' })).toBeInTheDocument();
 });
 
 test('a saved song still previews because playback goes through the preview route, not the stored link', async () => {

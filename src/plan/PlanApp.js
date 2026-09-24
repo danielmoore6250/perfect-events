@@ -6,7 +6,7 @@ import '../styles/Admin.css';
 import '../styles/Plan.css';
 import { API_BASE } from '../config';
 import { PLANNING_SECTIONS, WEDDING_PACKAGE_LABELS, formatDateTime } from '../shared/format';
-import SongPicker from './SongPicker';
+import MusicPlanner from './MusicPlanner';
 import { stopPreview } from '../shared/preview';
 
 const tokenFromPath = () => {
@@ -107,8 +107,8 @@ export default function PlanApp() {
   if (status === 'invalid') {
     return (
       <div className="admin plan">
+        <div className="plan__brand">Perfect Events NI</div>
         <div className="plan__center">
-          <p className="admin__eyebrow">Perfect Events NI</p>
           <h1 className="plan__title">This link isn't right</h1>
           <p className="muted">Check the link you were sent, or reply to our email and we'll send a fresh one.</p>
         </div>
@@ -118,8 +118,8 @@ export default function PlanApp() {
   if (status === 'error') {
     return (
       <div className="admin plan">
+        <div className="plan__brand">Perfect Events NI</div>
         <div className="plan__center">
-          <p className="admin__eyebrow">Perfect Events NI</p>
           <h1 className="plan__title">Something went wrong</h1>
           <p className="muted">Please try again in a moment.</p>
         </div>
@@ -132,8 +132,8 @@ export default function PlanApp() {
 
   return (
     <div className="admin plan">
+      <div className="plan__brand">Perfect Events NI</div>
       <header className="plan__head">
-        <p className="admin__eyebrow">Perfect Events NI</p>
         <h1 className="plan__title">Hi {firstName(booking.clientName)}, let's plan your {booking.eventTypeLabel}</h1>
         <p className="plan__meta">
           {booking.eventDateLabel}
@@ -165,19 +165,16 @@ export default function PlanApp() {
             <fieldset className="card plan__section" key={section.title} disabled={locked || busy}>
               <legend className="card__title">{section.title}</legend>
               {section.hint && <p className="muted small plan__hint">{section.hint}</p>}
+              {fields.some((f) => f.type === 'songs') && (
+                <MusicPlanner
+                  fields={fields.filter((f) => f.type === 'songs')}
+                  answers={answers}
+                  onChange={(key, value) => setValue(key)(value)}
+                  disabled={locked || busy}
+                />
+              )}
               <div className={section.fields[0].type === 'time' ? 'plan__grid' : 'plan__stack'}>
-                {fields.map((f) => f.type === 'songs' ? (
-                  <SongPicker
-                    key={f.key}
-                    label={f.label}
-                    hint={f.hint}
-                    value={answers[f.key]}
-                    onChange={setValue(f.key)}
-                    max={f.max}
-                    allowImport={f.allowImport}
-                    disabled={locked || busy}
-                  />
-                ) : (
+                {fields.filter((f) => f.type !== 'songs').map((f) => (
                   <label className="field" key={f.key}>
                     <span>{f.label}</span>
                     {f.type === 'long' ? (

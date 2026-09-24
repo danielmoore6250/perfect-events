@@ -325,9 +325,14 @@ shows it as a textarea with a "Use song search instead" switch.
 
 ### Screens
 
-- `src/plan/SongPicker.js`: search with 300ms debounce, results with artwork and
-  a 30-second preview (one shared player, `src/plan/preview.js`), add/remove,
-  "Can't find it? Type it in" for manual entries, playlist import on Must play.
+- `src/plan/MusicPlanner.js`: the Music section is one search with an "Adding
+  to" list selector, then the six lists as plain rows with a count and an Add
+  shortcut that points the search at that list. This replaced a first version
+  with a search box inside every list, which Daniel found cluttered. Search has
+  a 300ms debounce, results show artwork and a 30-second preview (one shared
+  player, `src/shared/preview.js`), "Can't find it? Type it in" and "Import a
+  playlist" sit under the results and act on the selected list. Icons are small
+  inline SVGs in `src/shared/icons.js`.
 - Admin planning card shows song lists with artwork and an "Open" link, plus
   "Copy song lists as text" (Artist – Title per line) for Rekordbox/Serato prep.
 - The notification email and the calendar description render songs as

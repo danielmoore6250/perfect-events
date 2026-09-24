@@ -6,7 +6,7 @@ import '../styles/Admin.css';
 import { getSession, signIn, completeNewPassword, forgotPassword, confirmForgotPassword, clearSession } from './auth';
 import { listBookings, getBooking, updateBooking, getCalendarLink, rotateCalendarLink, calendarFeedUrl, createPlanningLink, planningFormUrl } from './api';
 import { EVENT_TYPE_LABELS, WEDDING_PACKAGE_LABELS, labelFor, formatEventDate, formatDateTime, PLANNING_SECTIONS, PLANNING_FIELD_LABELS, answersToSetlistText } from '../shared/format';
-import { PreviewButton } from '../plan/SongPicker';
+import { PreviewButton, SongArt } from '../plan/MusicPlanner';
 import { subscribePreview, stopPreview } from '../shared/preview';
 
 const STATUSES = [
@@ -373,7 +373,7 @@ function SongAnswer({ value }) {
       <ul className="songlist songlist--admin">
         {value.map((song, i) => (
           <li className="song" key={`${song.source}:${song.id || song.title}:${i}`}>
-            {song.artwork ? <img className="song__art" src={song.artwork} alt="" loading="lazy" /> : <span className="song__art song__art--blank" aria-hidden="true">♪</span>}
+            <SongArt song={song} />
             <span className="song__text">
               <span className="song__title">{song.title}</span>
               <span className="song__artist muted small">{song.artist || (song.source === 'manual' ? 'Typed in by the client' : '')}</span>
