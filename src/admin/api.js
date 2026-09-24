@@ -39,3 +39,7 @@ export const listBookings = async () => (await call('GET', '/admin/bookings')).b
 export const getBooking = async (id) => (await call('GET', `/admin/bookings/${encodeURIComponent(id)}`)).booking;
 export const updateBooking = async (id, changes) =>
   (await call('PATCH', `/admin/bookings/${encodeURIComponent(id)}`, changes)).booking;
+
+export const getCalendarLink = async () => (await call('GET', '/admin/calendar')).calendar;
+export const rotateCalendarLink = async () => (await call('POST', '/admin/calendar/rotate', {})).calendar;
+export const calendarFeedUrl = (token) => `${API_BASE}/calendar/${token}.ics`;

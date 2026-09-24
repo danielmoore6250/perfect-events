@@ -37,6 +37,7 @@ const jsonResponse = (status, body) => ({
 
 let requests;
 let store;
+let calendarToken;
 
 beforeEach(() => {
   clearSession();
@@ -45,6 +46,7 @@ beforeEach(() => {
   window.scrollTo = jest.fn();
   requests = [];
   store = { [booking.id]: { ...booking }, [pastBooking.id]: { ...pastBooking } };
+  calendarToken = 'tok_original_000000000000000000';
 
   global.fetch = jest.fn(async (url, init = {}) => {
     const method = init.method || 'GET';
@@ -82,6 +84,12 @@ beforeEach(() => {
         return jsonResponse(200, {});
       }
 
+    }
+
+    if (url.startsWith(`${API_BASE}/admin/calendar`)) {
+      if (init.headers.Authorization !== 'Bearer id-token') return jsonResponse(401, { message: 'Unauthorized' });
+      if (method === 'POST' && url.endsWith('/rotate')) calendarToken = 'tok_rotated_0000000000000000000';
+      return jsonResponse(200, { calendar: { token: calendarToken, rotatedAt: '2026-09-24T10:00:00.000Z' } });
     }
 
     if (url.startsWith(`${API_BASE}/admin/bookings`)) {
@@ -283,4 +291,64 @@ test('signing out clears the session', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
   await waitFor(() => expect(screen.getByRole('heading', { name: 'Admin sign in' })).toBeInTheDocument());
   expect(localStorage.getItem('pe-admin-session')).toBeNull();
+});
+
+test('an empty list explains what is hidden and offers to show it', async () => {
+  store = { [pastBooking.id]: { ...pastBooking } };
+  render(<AdminApp />);
+  await signIn();
+
+  expect(await screen.findByText('No bookings match.')).toBeInTheDocument();
+  expect(screen.getByText(/1 booking in other stages/)).toBeInTheDocument();
+  expect(screen.queryByText(/hidden because the date has passed/)).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Show every stage' }));
+  expect(await screen.findByText(/1 booking hidden because the date has passed/)).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Show past dates' }));
+  expect(await screen.findByText('Old Client')).toBeInTheDocument();
+  expect(screen.getByLabelText('Include past dates')).toBeChecked();
+});
+
+test('a brand new account sees a friendly empty message', async () => {
+  store = {};
+  render(<AdminApp />);
+  await signIn();
+  expect(await screen.findByText(/No bookings yet/)).toBeInTheDocument();
+});
+
+test('the calendar page shows the feed link, copies it, and can rotate it', async () => {
+  const writeText = jest.fn().mockResolvedValue();
+  Object.assign(navigator, { clipboard: { writeText } });
+  window.confirm = jest.fn(() => true);
+
+  render(<AdminApp />);
+  await signIn();
+  await screen.findByText('Aoife Murphy');
+  fireEvent.click(screen.getByRole('button', { name: 'Calendar' }));
+
+  expect(await screen.findByRole('heading', { name: 'Bookings in your calendar' })).toBeInTheDocument();
+  expect(window.location.pathname).toBe('/admin/calendar');
+  const expectedUrl = `${API_BASE}/calendar/tok_original_000000000000000000.ics`;
+  expect(await screen.findByText(expectedUrl)).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Copy link' }));
+  expect(writeText).toHaveBeenCalledWith(expectedUrl);
+  expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Generate a new link' }));
+  expect(window.confirm).toHaveBeenCalled();
+  expect(await screen.findByText(`${API_BASE}/calendar/tok_rotated_0000000000000000000.ics`)).toBeInTheDocument();
+  expect(requests.some((r) => r.method === 'POST' && r.url === `${API_BASE}/admin/calendar/rotate`)).toBe(true);
+});
+
+test('declining the rotate confirmation leaves the link alone', async () => {
+  window.confirm = jest.fn(() => false);
+  window.history.replaceState(null, '', '/admin/calendar');
+  render(<AdminApp />);
+  await signIn();
+
+  await screen.findByText(`${API_BASE}/calendar/tok_original_000000000000000000.ics`);
+  fireEvent.click(screen.getByRole('button', { name: 'Generate a new link' }));
+  expect(requests.some((r) => r.method === 'POST' && r.url.endsWith('/rotate'))).toBe(false);
 });

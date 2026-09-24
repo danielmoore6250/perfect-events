@@ -220,6 +220,29 @@ export class InfraStack extends cdk.Stack {
       resources: [`${bookingsTable.tableArn}/index/ByEventDate`],
     }));
 
+    // ---- Calendar feed Lambda -------------------------------------------
+    // Public route guarded only by the token in the URL, which is why the
+    // Lambda can read but never write.
+    const calendarFeedFn = new lambda.Function(this, 'CalendarFeedFunction', {
+      functionName: 'perfect-events-calendar-feed',
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: 'index.handler',
+      code: nodeLambdaCode('calendar-feed'),
+      timeout: cdk.Duration.seconds(15),
+      memorySize: 256,
+      environment: {
+        BOOKINGS_TABLE: bookingsTable.tableName,
+      },
+    });
+    calendarFeedFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['dynamodb:GetItem'],
+      resources: [bookingsTable.tableArn],
+    }));
+    calendarFeedFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['dynamodb:Query'],
+      resources: [`${bookingsTable.tableArn}/index/ByEventDate`],
+    }));
+
     // HTTP API Gateway
     const httpApi = new apigatewayv2.HttpApi(this, 'HttpApi', {
       apiName: 'perfect-events-api',
@@ -266,6 +289,28 @@ export class InfraStack extends cdk.Stack {
       methods: [apigatewayv2.HttpMethod.GET, apigatewayv2.HttpMethod.PATCH],
       integration: adminIntegration,
       authorizer: adminAuthorizer,
+    });
+
+    httpApi.addRoutes({
+      path: '/admin/calendar',
+      methods: [apigatewayv2.HttpMethod.GET],
+      integration: adminIntegration,
+      authorizer: adminAuthorizer,
+    });
+
+    httpApi.addRoutes({
+      path: '/admin/calendar/rotate',
+      methods: [apigatewayv2.HttpMethod.POST],
+      integration: adminIntegration,
+      authorizer: adminAuthorizer,
+    });
+
+    // The subscribe URL: <api>/calendar/<token>.ics. No authorizer; the token
+    // is the credential and the Lambda 404s on a mismatch.
+    httpApi.addRoutes({
+      path: '/calendar/{token}',
+      methods: [apigatewayv2.HttpMethod.GET],
+      integration: new integrations.HttpLambdaIntegration('CalendarFeedIntegration', calendarFeedFn),
     });
 
     // Deploy React build to S3
