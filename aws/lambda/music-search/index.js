@@ -2,6 +2,11 @@
 //
 //   GET /music/search?q=perfect            up to 25 matching songs
 //   GET /music/playlist?url=<link>         every track in a public playlist
+//   GET /music/preview?source=&id=         302 to a fresh 30-second preview
+//
+// Previews are never played from a stored link: Deezer signs its preview URLs
+// and they expire within minutes, so a link saved with a booking is dead by
+// the time anyone presses play. The preview route looks the track up again.
 //
 // Apple Music is the catalogue when a MusicKit key is in Parameter Store; the
 // Lambda signs the developer token itself. Deezer needs no key and is the
@@ -33,6 +38,8 @@ const MAX_PLAYLIST_TRACKS = 300;
 const FETCH_TIMEOUT_MS = 6000;
 const TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
 const SEARCH_CACHE_TTL_MS = 10 * 60 * 1000;
+// Deezer preview links last about 15 minutes; keep well inside that.
+const PREVIEW_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -133,6 +140,12 @@ const appleSearch = async (token, query, limit) => {
   return (data.results?.songs?.data || []).map(fromApple);
 };
 
+const appleSong = async (token, id) => {
+  const data = await fetchJson(`${APPLE_API}/catalog/${APPLE_STOREFRONT}/songs/${encodeURIComponent(id)}`, { Authorization: `Bearer ${token}` });
+  const song = data.data?.[0];
+  return song ? fromApple(song) : null;
+};
+
 // music.apple.com/gb/playlist/<slug>/pl.u-xxxx  (the id is the last segment)
 const applePlaylistId = (link) => {
   const match = link.pathname.match(/\/playlist\/(?:[^/]+\/)?(pl\.[A-Za-z0-9._-]+)\/?$/);
@@ -168,6 +181,12 @@ const deezerSearch = async (query, limit) => {
   const data = await fetchJson(`${DEEZER_API}/search?q=${encodeURIComponent(query)}&limit=${limit}`);
   if (data.error) throw new Error(`Deezer: ${data.error.message || 'error'}`);
   return (data.data || []).map(fromDeezer);
+};
+
+const deezerTrack = async (id) => {
+  const data = await fetchJson(`${DEEZER_API}/track/${encodeURIComponent(id)}`);
+  if (data.error) return null;
+  return fromDeezer(data);
 };
 
 // deezer.com/<lang>/playlist/<id>
@@ -220,6 +239,29 @@ const search = async (query, limit) => {
 
   cacheSet(key, result);
   return result;
+};
+
+const previewCache = new Map();
+const freshPreviewUrl = async (source, id) => {
+  const key = `${source}:${id}`;
+  const hit = previewCache.get(key);
+  if (hit && hit.expiresAt > Date.now()) return hit.url;
+
+  let song = null;
+  if (source === 'apple') {
+    const token = await appleToken();
+    if (!token) throw new HttpError(503, 'Apple Music previews are not available right now');
+    song = await appleSong(token, id);
+  } else if (source === 'deezer') {
+    song = await deezerTrack(id);
+  } else {
+    throw new HttpError(400, 'source must be apple or deezer');
+  }
+
+  if (!song?.previewUrl) throw new HttpError(404, 'No preview for that song');
+  if (previewCache.size > 1000) previewCache.clear();
+  previewCache.set(key, { url: song.previewUrl, expiresAt: Date.now() + PREVIEW_CACHE_TTL_MS });
+  return song.previewUrl;
 };
 
 const importPlaylist = async (rawUrl) => {
@@ -280,10 +322,23 @@ exports.handler = async (event) => {
   const ip = event.requestContext?.http?.sourceIp || 'unknown';
 
   try {
-    if (path === '/music/search' || path === '/music/playlist') {
-      if (!rateCheck(ip, path === '/music/search' ? 'search' : 'import')) {
+    if (path === '/music/search' || path === '/music/playlist' || path === '/music/preview') {
+      if (!rateCheck(ip, path === '/music/playlist' ? 'import' : 'search')) {
         throw new HttpError(429, 'Slow down a little and try again in a minute.');
       }
+    }
+
+    if (path === '/music/preview') {
+      const source = String(params.source || '').trim();
+      const id = String(params.id || '').trim();
+      if (!id || id.length > 100) throw new HttpError(400, 'id is required');
+      const url = await freshPreviewUrl(source, id);
+      // A redirect lets an <audio> element point straight at this route.
+      return {
+        statusCode: 302,
+        headers: { Location: url, 'Cache-Control': 'private, max-age=240', 'Access-Control-Allow-Origin': '*' },
+        body: ''
+      };
     }
 
     if (path === '/music/search') {
@@ -315,5 +370,6 @@ exports._resetForTests = () => {
   appleCredentials = undefined;
   cachedToken = null;
   searchCache.clear();
+  previewCache.clear();
   buckets.clear();
 };

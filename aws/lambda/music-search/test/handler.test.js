@@ -81,6 +81,12 @@ beforeEach(() => {
         const term = u.searchParams.get('term');
         return json({ results: { songs: { data: [appleSong('100', `${term} (Apple)`, 'Ed Sheeran'), appleSong('101', 'Perfect Symphony', 'Ed Sheeran & Andrea Bocelli')] } } });
       }
+      if (u.pathname === '/v1/catalog/gb/songs/100') {
+        return json({ data: [appleSong('100', 'Perfect', 'Ed Sheeran')] });
+      }
+      if (u.pathname === '/v1/catalog/gb/songs/nopreview') {
+        return json({ data: [{ id: 'nopreview', type: 'songs', attributes: { name: 'Silent', artistName: 'X', previews: [] } }] });
+      }
       if (u.pathname.includes('/playlists/pl.u-abc/tracks')) {
         if (u.searchParams.get('offset') === '100') return json({ data: [appleSong('202', 'Second page', 'B')] });
         return json({ data: [appleSong('201', 'First page', 'A'), { id: 'mv1', type: 'music-videos', attributes: { name: 'skip me' } }], next: '/v1/catalog/gb/playlists/pl.u-abc/tracks?offset=100' });
@@ -89,6 +95,12 @@ beforeEach(() => {
     }
 
     if (u.hostname === 'api.deezer.com') {
+      if (u.pathname === '/track/142986206') {
+        return json({ ...deezerTrack(142986206, 'Perfect', 'Ed Sheeran'), preview: `https://cdnt-preview.dzcdn.net/fresh.mp3?hdnea=exp=${Math.floor(Date.now() / 1000) + 900}` });
+      }
+      if (u.pathname === '/track/0') {
+        return json({ error: { type: 'DataException', message: 'no data' } });
+      }
       if (u.pathname === '/search') {
         return json({ data: [deezerTrack(1, `${u.searchParams.get('q')} (Deezer)`, 'Ed Sheeran')], total: 1 });
       }
@@ -279,4 +291,37 @@ test('a single address is limited per minute, searches and imports separately', 
   // The window resets after a minute.
   const later = Date.now() + 61 * 1000;
   assert.equal(rateCheck('1.1.1.1', 'search', later), true);
+});
+
+test('the preview route looks the track up and redirects to a fresh link', async () => {
+  const { handler } = loadModule();
+  const res = await handler(request('/music/preview', { source: 'deezer', id: '142986206' }));
+
+  assert.equal(res.statusCode, 302);
+  assert.match(res.headers.Location, /^https:\/\/cdnt-preview\.dzcdn\.net\/fresh\.mp3\?hdnea=exp=\d+$/);
+  assert.equal(res.headers['Access-Control-Allow-Origin'], '*');
+
+  const apple = await handler(request('/music/preview', { source: 'apple', id: '100' }));
+  assert.equal(apple.statusCode, 302);
+  assert.equal(apple.headers.Location, 'https://audio-ssl.itunes.apple.com/100.m4a');
+});
+
+test('preview lookups are cached briefly, well inside the link lifetime', async () => {
+  const { handler } = loadModule();
+  await handler(request('/music/preview', { source: 'deezer', id: '142986206' }));
+  await handler(request('/music/preview', { source: 'deezer', id: '142986206' }));
+  assert.equal(fetches.filter((f) => f.url.endsWith('/track/142986206')).length, 1);
+});
+
+test('the preview route rejects bad input and reports missing previews', async () => {
+  const { handler } = loadModule();
+  assert.equal((await handler(request('/music/preview', { source: 'deezer' }))).statusCode, 400);
+  assert.equal((await handler(request('/music/preview', { source: 'spotify', id: '1' }))).statusCode, 400);
+  assert.equal((await handler(request('/music/preview', { source: 'manual', id: '1' }))).statusCode, 400);
+  assert.equal((await handler(request('/music/preview', { source: 'deezer', id: '0' }))).statusCode, 404);
+  assert.equal((await handler(request('/music/preview', { source: 'apple', id: 'nopreview' }))).statusCode, 404);
+
+  appleConfigured = false;
+  const { handler: noApple } = loadModule();
+  assert.equal((await noApple(request('/music/preview', { source: 'apple', id: '100' }))).statusCode, 503);
 });

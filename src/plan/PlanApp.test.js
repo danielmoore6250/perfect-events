@@ -5,7 +5,7 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import PlanApp from './PlanApp';
 import { API_BASE } from '../config';
-import { stopPreview } from './preview';
+import { stopPreview } from '../shared/preview';
 
 const TOKEN = 'planXYZ123_abcdefghijklmnopqrstu';
 
@@ -128,9 +128,13 @@ test('searching shows results with a preview, adding a song fills the list, and 
   expect(picker('First dance').getByRole('button', { name: 'Add Perfect Symphony by Ed Sheeran & Andrea Bocelli' })).toBeInTheDocument();
   expect(searches).toEqual(['perf']);
 
-  // Preview toggles through the shared player.
+  // Preview toggles through the shared player, streaming via our own route so
+  // the link is always fresh (stored Deezer links expire within minutes).
+  const playSpy = window.HTMLMediaElement.prototype.play;
   fireEvent.click(picker('First dance').getByRole('button', { name: 'Preview Perfect' }));
-  expect(window.HTMLMediaElement.prototype.play).toHaveBeenCalled();
+  expect(playSpy).toHaveBeenCalled();
+  const audio = playSpy.mock.instances[0];
+  expect(audio.src).toBe(`${API_BASE}/music/preview?source=apple&id=100`);
   expect(await picker('First dance').findByRole('button', { name: 'Stop preview of Perfect' })).toBeInTheDocument();
 
   fireEvent.click(addPerfect);
@@ -336,4 +340,25 @@ test('starting a second preview while the first is still starting keeps the seco
 
   expect(picker('First dance').getByRole('button', { name: 'Stop preview of Perfect Symphony' })).toBeInTheDocument();
   expect(picker('First dance').getByRole('button', { name: 'Preview Perfect' })).toBeInTheDocument();
+});
+
+test('a saved song still previews because playback goes through the preview route, not the stored link', async () => {
+  current = view({
+    answers: { mustPlay: [song(200, 'Mr Brightside', 'The Killers', { previewUrl: 'https://cdnt-preview.dzcdn.net/expired.mp3?hdnea=exp=1' })] },
+    submittedAt: 'x',
+    updatedAt: 'x'
+  });
+  visit(`/plan/${TOKEN}`);
+  await screen.findByRole('group', { name: 'Must play' });
+  const playSpy = window.HTMLMediaElement.prototype.play;
+  fireEvent.click(picker('Must play').getByRole('button', { name: 'Preview Mr Brightside' }));
+  expect(playSpy.mock.instances[0].src).toBe(`${API_BASE}/music/preview?source=apple&id=200`);
+  expect(playSpy.mock.instances[0].src).not.toContain('expired');
+});
+
+test('a typed-in song has no preview button', async () => {
+  current = view({ answers: { doNotPlay: [{ source: 'manual', id: null, title: 'Our terrible song', artist: '', album: null, artwork: null, previewUrl: null, url: null, durationMs: null }] }, submittedAt: 'x', updatedAt: 'x' });
+  visit(`/plan/${TOKEN}`);
+  await screen.findByRole('group', { name: 'Do not play' });
+  expect(picker('Do not play').queryByRole('button', { name: /Preview/ })).not.toBeInTheDocument();
 });

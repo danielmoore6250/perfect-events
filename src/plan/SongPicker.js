@@ -4,12 +4,10 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { API_BASE } from '../config';
-import { togglePreview, subscribePreview } from './preview';
+import { togglePreview, subscribePreview, previewSrc, songKey } from '../shared/preview';
 
 const SEARCH_DEBOUNCE_MS = 300;
 const MIN_QUERY = 2;
-
-export const songKey = (s) => (s.source === 'manual' ? `manual:${s.title}|${s.artist}`.toLowerCase() : `${s.source}:${s.id}`);
 
 const formatDuration = (ms) => {
   if (typeof ms !== 'number') return '';
@@ -17,15 +15,16 @@ const formatDuration = (ms) => {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 };
 
-function PreviewButton({ song, playing }) {
-  if (!song.previewUrl) return null;
+export function PreviewButton({ song, playing }) {
+  const src = previewSrc(song);
+  if (!src) return null;
   const key = songKey(song);
   const isPlaying = playing === key;
   return (
     <button
       type="button"
       className={`song__play ${isPlaying ? 'song__play--on' : ''}`}
-      onClick={() => togglePreview(key, song.previewUrl)}
+      onClick={() => togglePreview(key, src)}
       aria-label={isPlaying ? `Stop preview of ${song.title}` : `Preview ${song.title}`}
       title={isPlaying ? 'Stop' : '30-second preview'}
     >

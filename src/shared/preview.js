@@ -1,4 +1,17 @@
 // One preview player for the whole page, so starting a song stops the last one.
+//
+// Previews always stream through our own /music/preview route, which looks
+// the track up and redirects to a current link. Stored preview links are not
+// used: Deezer signs them and they expire within minutes of a search.
+
+import { API_BASE } from '../config';
+
+export const songKey = (s) => (s.source === 'manual' ? `manual:${s.title}|${s.artist}`.toLowerCase() : `${s.source}:${s.id}`);
+
+export const previewSrc = (song) =>
+  song && song.source !== 'manual' && song.id && song.previewUrl
+    ? `${API_BASE}/music/preview?source=${encodeURIComponent(song.source)}&id=${encodeURIComponent(song.id)}`
+    : null;
 
 let audio = null;
 let playingKey = null;

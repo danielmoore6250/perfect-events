@@ -419,7 +419,7 @@ test('the planning card renders picked songs with artwork, an Open link, and cop
     planningToken: 'tok_existing_0000000000000000000',
     planning: {
       answers: {
-        firstDance: [{ source: 'apple', id: '100', title: 'Perfect', artist: 'Ed Sheeran', album: '÷', artwork: 'https://is1-ssl.mzstatic.com/100/300x300bb.jpg', previewUrl: null, url: 'https://music.apple.com/gb/album/x/100', durationMs: 263000 }],
+        firstDance: [{ source: 'apple', id: '100', title: 'Perfect', artist: 'Ed Sheeran', album: '÷', artwork: 'https://is1-ssl.mzstatic.com/100/300x300bb.jpg', previewUrl: 'https://audio-ssl.itunes.apple.com/100.m4a', url: 'https://music.apple.com/gb/album/x/100', durationMs: 263000 }],
         mustPlay: [
           { source: 'deezer', id: '9', title: 'Boston', artist: 'Augustana', album: null, artwork: null, previewUrl: null, url: 'https://www.deezer.com/track/9', durationMs: null },
           { source: 'manual', id: null, title: 'Our song', artist: '', album: null, artwork: null, previewUrl: null, url: null, durationMs: null }
@@ -452,6 +452,14 @@ test('the planning card renders picked songs with artwork, an Open link, and cop
 
   // Legacy text still shows as text.
   expect(screen.getByText('Cha Cha Slide')).toBeInTheDocument();
+
+  // The admin can preview a picked song; playback streams through the preview route.
+  window.HTMLMediaElement.prototype.play = jest.fn().mockResolvedValue();
+  window.HTMLMediaElement.prototype.pause = jest.fn();
+  fireEvent.click(first.getByRole('button', { name: 'Preview Perfect' }));
+  expect(window.HTMLMediaElement.prototype.play.mock.instances[0].src).toBe(`${API_BASE}/music/preview?source=apple&id=100`);
+  expect(await first.findByRole('button', { name: 'Stop preview of Perfect' })).toBeInTheDocument();
+  expect(must.queryByRole('button', { name: /Preview Our song/ })).not.toBeInTheDocument();
 
   fireEvent.click(screen.getByRole('button', { name: 'Copy song lists as text' }));
   expect(writeText).toHaveBeenCalledWith('First dance\nEd Sheeran – Perfect\n\nMust play\nAugustana – Boston\nOur song\n\nDo not play\nCha Cha Slide');
