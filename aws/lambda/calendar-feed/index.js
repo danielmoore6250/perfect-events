@@ -115,6 +115,23 @@ const describe = (b) => {
   }
 
   lines.push(`Stage: ${b.status}`);
+
+  // Timings the client gave on their planning form, once they have.
+  const answers = b.planning?.answers || {};
+  const timings = [
+    ['Set-up from', answers.setupAccessTime],
+    ['Guests', answers.guestArrivalTime],
+    ['Meal', answers.mealTime],
+    ['Speeches', answers.speechesTime],
+    ['DJ', answers.djStartTime],
+    ['Finish', answers.finishTime]
+  ].filter(([, value]) => value);
+  if (timings.length) lines.push(`Timings: ${timings.map(([label, value]) => `${label} ${value}`).join(', ')}`);
+  if (answers.firstDance) lines.push(`First dance: ${answers.firstDance}`);
+  if (answers.venueContactName || answers.venueContactPhone) {
+    lines.push(`Venue contact: ${[answers.venueContactName, answers.venueContactPhone].filter(Boolean).join(' ')}`);
+  }
+
   if (b.notes) lines.push('', b.notes);
   lines.push('', `${ADMIN_URL}/${b.id}`);
   return lines.join('\n');

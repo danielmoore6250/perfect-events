@@ -153,6 +153,26 @@ test('bookings with an impossible calendar date are left out rather than emitted
   assert.deepEqual(uids, ['leap']);
 });
 
+test('planning form timings and contacts appear in the description once the client has filled them in', async () => {
+  const { handler } = loadModule();
+  bookings = [booking({
+    planning: {
+      answers: { guestArrivalTime: '18:00', djStartTime: '19:30', finishTime: '00:00', firstDance: 'Perfect - Ed Sheeran', venueContactName: 'Sam', venueContactPhone: '028 9000 0000' },
+      submittedAt: '2027-05-01T10:00:00.000Z',
+      updatedAt: '2027-05-01T10:00:00.000Z'
+    }
+  })];
+  const body = unfold((await handler(request(TOKEN))).body);
+  const description = body.match(/DESCRIPTION:(.*)/)[1];
+  assert.ok(description.includes('Timings: Guests 18:00\\, DJ 19:30\\, Finish 00:00'));
+  assert.ok(description.includes('First dance: Perfect - Ed Sheeran'));
+  assert.ok(description.includes('Venue contact: Sam 028 9000 0000'));
+
+  bookings = [booking()];
+  const plain = unfold((await handler(request(TOKEN))).body);
+  assert.ok(!plain.includes('Timings:'));
+});
+
 test('a paid balance is reported as paid', async () => {
   const { handler } = loadModule();
   bookings = [booking({ pricing: { quote: 800, deposit: 200, depositPaidOn: '2026-10-01', balancePaidOn: '2027-06-01' } })];

@@ -102,7 +102,7 @@ beforeEach(() => {
       // Apply the update expression the simple way: we know the shape it takes.
       const names = command.input.ExpressionAttributeNames;
       const values = command.input.ExpressionAttributeValues;
-      if (item.updatedAt !== values[':expectedUpdatedAt']) {
+      if (values[':expectedUpdatedAt'] !== undefined && item.updatedAt !== values[':expectedUpdatedAt']) {
         const err = new Error('The conditional request failed');
         err.name = 'ConditionalCheckFailedException';
         throw err;
@@ -111,8 +111,11 @@ beforeEach(() => {
       for (const clause of splitClauses(command.input.UpdateExpression.replace(/^SET /, ''))) {
         const [target, expr] = clause.split(' = ');
         const field = names[target];
+        const guarded = expr.match(/^if_not_exists\(#\w+, (:\w+)\)$/);
         if (expr.startsWith('list_append')) {
           next[field] = [...(item[field] || []), ...values[':historyEntry']];
+        } else if (guarded) {
+          if (item[field] === undefined) next[field] = values[guarded[1]];
         } else {
           next[field] = values[expr];
         }
@@ -450,4 +453,45 @@ test('calendar routes reject the wrong method', async () => {
   const handler = loadHandler();
   assert.equal((await handler(request('POST', '/admin/calendar'))).statusCode, 404);
   assert.equal((await handler(request('GET', '/admin/calendar/rotate'))).statusCode, 404);
+});
+
+test('moving a booking to booked gives it a planning link, and moving it again keeps the same one', async () => {
+  const handler = loadHandler();
+  let res = await handler(request('PATCH', '/admin/bookings/abc-123', { id: 'abc-123', body: { status: 'booked' } }));
+  assert.equal(res.statusCode, 200);
+  const token = JSON.parse(res.body).booking.planningToken;
+  assert.match(token, /^[A-Za-z0-9_-]{32}$/);
+
+  res = await handler(request('PATCH', '/admin/bookings/abc-123', { id: 'abc-123', body: { status: 'quoted' } }));
+  res = await handler(request('PATCH', '/admin/bookings/abc-123', { id: 'abc-123', body: { status: 'booked' } }));
+  assert.equal(JSON.parse(res.body).booking.planningToken, token, 'an existing link is never replaced by a stage change');
+});
+
+test('other stage changes do not create a planning link', async () => {
+  const handler = loadHandler();
+  const res = await handler(request('PATCH', '/admin/bookings/abc-123', { id: 'abc-123', body: { status: 'quoted' } }));
+  assert.equal(JSON.parse(res.body).booking.planningToken, undefined);
+});
+
+test('POST /admin/bookings/{id}/planning-link creates a link once and regenerates on request', async () => {
+  const handler = loadHandler();
+  let res = await handler(request('POST', '/admin/bookings/abc-123/planning-link', { id: 'abc-123', body: {} }));
+  assert.equal(res.statusCode, 200);
+  const first = JSON.parse(res.body).booking.planningToken;
+  assert.match(first, /^[A-Za-z0-9_-]{32}$/);
+
+  res = await handler(request('POST', '/admin/bookings/abc-123/planning-link', { id: 'abc-123', body: {} }));
+  assert.equal(JSON.parse(res.body).booking.planningToken, first, 'a plain request keeps the existing link');
+
+  res = await handler(request('POST', '/admin/bookings/abc-123/planning-link', { id: 'abc-123', body: { regenerate: true } }));
+  const second = JSON.parse(res.body).booking.planningToken;
+  assert.match(second, /^[A-Za-z0-9_-]{32}$/);
+  assert.notEqual(second, first);
+  assert.equal(store['abc-123'].planningToken, second);
+});
+
+test('POST planning-link on an unknown booking is a 404', async () => {
+  const handler = loadHandler();
+  const res = await handler(request('POST', '/admin/bookings/nope/planning-link', { id: 'nope', body: {} }));
+  assert.equal(res.statusCode, 404);
 });

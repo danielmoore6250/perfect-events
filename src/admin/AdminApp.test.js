@@ -96,6 +96,13 @@ beforeEach(() => {
       if (init.headers.Authorization !== 'Bearer id-token' && init.headers.Authorization !== 'Bearer id-token-2') {
         return jsonResponse(401, { message: 'Unauthorized' });
       }
+      if (method === 'POST' && url.endsWith('/planning-link')) {
+        const id = decodeURIComponent(url.slice(`${API_BASE}/admin/bookings/`.length, -'/planning-link'.length));
+        const current = store[id];
+        const token = body.regenerate || !current.planningToken ? `tok_${(current.planningToken ? 'new' : 'first')}_000000000000000000000` : current.planningToken;
+        store[id] = { ...current, planningToken: token };
+        return jsonResponse(200, { booking: store[id] });
+      }
       const id = decodeURIComponent(url.slice(`${API_BASE}/admin/bookings/`.length));
       if (url === `${API_BASE}/admin/bookings`) {
         return jsonResponse(200, { bookings: Object.values(store) });
@@ -351,4 +358,55 @@ test('declining the rotate confirmation leaves the link alone', async () => {
   await screen.findByText(`${API_BASE}/calendar/tok_original_000000000000000000.ics`);
   fireEvent.click(screen.getByRole('button', { name: 'Generate a new link' }));
   expect(requests.some((r) => r.method === 'POST' && r.url.endsWith('/rotate'))).toBe(false);
+});
+
+test('the planning card creates a link, shows it, and regenerates it on confirm', async () => {
+  const writeText = jest.fn().mockResolvedValue();
+  Object.assign(navigator, { clipboard: { writeText } });
+  window.confirm = jest.fn(() => true);
+
+  render(<AdminApp />);
+  await signIn();
+  fireEvent.click(await screen.findByText('Aoife Murphy'));
+  await screen.findByRole('heading', { name: 'Aoife Murphy' });
+
+  expect(screen.getByText(/No link yet/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Create planning link' }));
+
+  const expectedUrl = `${window.location.origin}/plan/tok_first_000000000000000000000`;
+  expect(await screen.findByText(expectedUrl)).toBeInTheDocument();
+  expect(screen.getByText('Not filled in yet.')).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Copy link' }));
+  expect(writeText).toHaveBeenCalledWith(expectedUrl);
+
+  fireEvent.click(screen.getByRole('button', { name: 'New link' }));
+  expect(window.confirm).toHaveBeenCalled();
+  expect(await screen.findByText(`${window.location.origin}/plan/tok_new_000000000000000000000`)).toBeInTheDocument();
+  const regen = requests.find((r) => r.method === 'POST' && r.url.endsWith('/planning-link') && r.body.regenerate === true);
+  expect(regen).toBeTruthy();
+});
+
+test("the planning card shows the client's answers once submitted", async () => {
+  store[booking.id] = {
+    ...store[booking.id],
+    planningToken: 'tok_existing_0000000000000000000',
+    planning: {
+      answers: { djStartTime: '19:30', firstDance: 'Perfect – Ed Sheeran', doNotPlay: 'Cha Cha Slide\nMacarena' },
+      submittedAt: '2026-09-25T10:00:00.000Z',
+      updatedAt: '2026-09-26T11:00:00.000Z'
+    }
+  };
+  render(<AdminApp />);
+  await signIn();
+  fireEvent.click(await screen.findByText('Aoife Murphy'));
+  await screen.findByRole('heading', { name: 'Aoife Murphy' });
+
+  expect(screen.getByText(/Filled in .*last changed/)).toBeInTheDocument();
+  expect(screen.getByText('DJ starts')).toBeInTheDocument();
+  expect(screen.getByText('19:30')).toBeInTheDocument();
+  expect(screen.getByText('First dance')).toBeInTheDocument();
+  expect(screen.getByText('Perfect – Ed Sheeran')).toBeInTheDocument();
+  expect(screen.getByText(/Cha Cha Slide/)).toBeInTheDocument();
+  expect(screen.queryByText('Not filled in yet.')).not.toBeInTheDocument();
 });

@@ -1,0 +1,18 @@
+/* Client planning page. Reuses the admin tokens and form styles via Admin.css. */
+
+.plan { padding: 24px 16px 64px; max-width: 760px; margin: 0 auto; }
+.plan__center { text-align: center; padding: 64px 0; }
+.plan__head { margin-bottom: 20px; }
+.plan__title { font-family: var(--font-display); font-size: clamp(26px, 5vw, 36px); font-weight: 700; line-height: 1.1; margin: 4px 0 8px; }
+.plan__meta { color: var(--text-muted); margin-bottom: 8px; }
+.plan__form { display: flex; flex-direction: column; gap: 16px; margin-top: 16px; }
+.plan__section { border: 1px solid var(--border); padding: 18px; }
+.plan__section legend { padding: 0 6px; margin-left: -6px; }
+.plan__section:disabled { opacity: 0.7; }
+.plan__hint { margin: -4px 0 12px; }
+.plan__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+.plan__stack { display: flex; flex-direction: column; gap: 12px; }
+.plan__actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.plan__foot { margin-top: 32px; text-align: center; }
+.button--lg { padding: 14px 24px; font-size: 16px; }
+.notice + .notice { margin-top: 8px; }

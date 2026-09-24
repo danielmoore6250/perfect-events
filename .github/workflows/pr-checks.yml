@@ -28,6 +28,7 @@ jobs:
             aws/lambda/send-enquiry/package-lock.json
             aws/lambda/admin-bookings/package-lock.json
             aws/lambda/calendar-feed/package-lock.json
+            aws/lambda/planning-form/package-lock.json
 
       - name: Install site dependencies
         run: npm ci
@@ -62,6 +63,14 @@ jobs:
 
       - name: Test calendar Lambda
         working-directory: aws/lambda/calendar-feed
+        run: npm test
+
+      - name: Install planning form Lambda dependencies
+        working-directory: aws/lambda/planning-form
+        run: npm ci
+
+      - name: Test planning form Lambda
+        working-directory: aws/lambda/planning-form
         run: npm test
 
       - name: Build React app

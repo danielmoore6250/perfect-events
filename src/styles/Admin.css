@@ -227,3 +227,8 @@
   .detail__title { font-size: 26px; }
   .field-row { grid-template-columns: 1fr; }
 }
+
+/* ---- Planning answers in the detail view ------------------------------ */
+
+.planning { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+.planning__item { display: contents; }

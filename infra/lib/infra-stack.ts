@@ -118,6 +118,14 @@ export class InfraStack extends cdk.Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
+    // Lets the public planning form find a booking by its private link token.
+    // Sparse: only bookings that have been given a link carry planningToken.
+    bookingsTable.addGlobalSecondaryIndex({
+      indexName: 'ByPlanningToken',
+      partitionKey: { name: 'planningToken', type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
     // Lambda function for sending enquiries
     const sendEnquiryFn = new lambda.Function(this, 'SendEnquiryFunction', {
       functionName: 'perfect-events-send-enquiry',
@@ -243,6 +251,34 @@ export class InfraStack extends cdk.Stack {
       resources: [`${bookingsTable.tableArn}/index/ByEventDate`],
     }));
 
+    // ---- Client planning form Lambda ------------------------------------
+    // Public, guarded by the per-booking token. Reads by token, writes only
+    // the planning answers (and the resulting stage change), emails the
+    // business on submission.
+    const planningFormFn = new lambda.Function(this, 'PlanningFormFunction', {
+      functionName: 'perfect-events-planning-form',
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: 'index.handler',
+      code: nodeLambdaCode('planning-form'),
+      timeout: cdk.Duration.seconds(15),
+      memorySize: 256,
+      environment: {
+        BOOKINGS_TABLE: bookingsTable.tableName,
+      },
+    });
+    planningFormFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['dynamodb:Query'],
+      resources: [`${bookingsTable.tableArn}/index/ByPlanningToken`],
+    }));
+    planningFormFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['dynamodb:UpdateItem'],
+      resources: [bookingsTable.tableArn],
+    }));
+    planningFormFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['ses:SendEmail'],
+      resources: ['*'],
+    }));
+
     // HTTP API Gateway
     const httpApi = new apigatewayv2.HttpApi(this, 'HttpApi', {
       apiName: 'perfect-events-api',
@@ -292,6 +328,13 @@ export class InfraStack extends cdk.Stack {
     });
 
     httpApi.addRoutes({
+      path: '/admin/bookings/{id}/planning-link',
+      methods: [apigatewayv2.HttpMethod.POST],
+      integration: adminIntegration,
+      authorizer: adminAuthorizer,
+    });
+
+    httpApi.addRoutes({
       path: '/admin/calendar',
       methods: [apigatewayv2.HttpMethod.GET],
       integration: adminIntegration,
@@ -303,6 +346,13 @@ export class InfraStack extends cdk.Stack {
       methods: [apigatewayv2.HttpMethod.POST],
       integration: adminIntegration,
       authorizer: adminAuthorizer,
+    });
+
+    // The client planning form: <api>/plan/<token>. Token is the credential.
+    httpApi.addRoutes({
+      path: '/plan/{token}',
+      methods: [apigatewayv2.HttpMethod.GET, apigatewayv2.HttpMethod.POST],
+      integration: new integrations.HttpLambdaIntegration('PlanningFormIntegration', planningFormFn),
     });
 
     // The subscribe URL: <api>/calendar/<token>.ics. No authorizer; the token
