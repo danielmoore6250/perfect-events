@@ -326,8 +326,10 @@ artwork and previews instead of typing names.
   parameters. The link is saved on the answers (`playlistLinks`, max 10), shows
   in the admin card with Open, and is in the email and copy-as-text. Daniel opens
   it in his own account.
-- Apple Music and Deezer links can additionally pull their tracks (up to 300)
-  into Must play with an "Import songs" button on the saved link.
+- Pasting a link does the right thing on its own: every link is saved; an Apple
+  Music or Deezer link also has its tracks (up to 300) pulled into Must play
+  straight away; Spotify and YouTube are links only. There is no separate
+  import control.
 
 ### Data
 

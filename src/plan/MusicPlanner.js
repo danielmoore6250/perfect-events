@@ -11,9 +11,8 @@ import SongFinder from './SongFinder';
 
 export { PreviewButton, SongArt, SongRow } from './SongRow';
 
-// A shared playlist link with its title and cover, and for Apple Music and
-// Deezer links a way to pull the songs into a list.
-export function PlaylistLinkRow({ link, action, onImport, importing }) {
+// A shared playlist link with its title and cover.
+export function PlaylistLinkRow({ link, action }) {
   return (
     <li className="song">
       {link.thumbnail ? <img className="song__art" src={link.thumbnail} alt="" loading="lazy" /> : <span className="song__art song__art--blank" aria-hidden="true"><NoteIcon /></span>}
@@ -21,29 +20,23 @@ export function PlaylistLinkRow({ link, action, onImport, importing }) {
         <a className="song__title" href={link.url} target="_blank" rel="noreferrer">{link.title || 'Playlist'}</a>
         <span className="song__artist muted small">{PROVIDER_LABELS[link.provider] || link.provider}</span>
       </span>
-      {onImport && (link.provider === 'apple' || link.provider === 'deezer') && (
-        <button type="button" className="button button--small" onClick={() => onImport(link)} disabled={importing} aria-label={`Import songs from ${link.title || 'playlist'}`}>
-          {importing ? 'Importing…' : 'Import songs'}
-        </button>
-      )}
       {action}
     </li>
   );
 }
+
+// A network failure reads better than the browser's own words for it.
+const friendly = (err, fallback) => (err instanceof TypeError ? 'Could not reach the server. Check your connection and try again.' : err.message || fallback);
 
 export default function MusicPlanner({ fields, answers, onChange, disabled = false }) {
   const songFields = fields.filter((f) => f.type === 'songs');
   const linkField = fields.find((f) => f.type === 'links') || null;
   const [destination, setDestination] = useState(() => (songFields.find((f) => f.key === 'mustPlay') || songFields[0]).key);
   const [error, setError] = useState('');
-  const [panel, setPanel] = useState(null); // null | 'import'
-  const [importUrl, setImportUrl] = useState('');
-  const [importing, setImporting] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
   const [addingLink, setAddingLink] = useState(false);
   const [linkError, setLinkError] = useState('');
-  const [importingKey, setImportingKey] = useState(null);
-  const [note, setNote] = useState('');
+  const [linkNote, setLinkNote] = useState('');
   const [playing, setPlaying] = useState(null);
   const finderRef = useRef(null);
 
@@ -72,7 +65,6 @@ export default function MusicPlanner({ fields, answers, onChange, disabled = fal
 
   const target = (key) => {
     setDestination(key);
-    setNote('');
     setError('');
     finderRef.current?.focus();
   };
@@ -84,11 +76,10 @@ export default function MusicPlanner({ fields, answers, onChange, disabled = fal
 
   const remove = (key, song) => onChange(key, songsOf(key).filter((s) => songKey(s) !== songKey(song)));
 
-  // Pulls a playlist's songs into the selected list (or Must play when the
-  // selected list cannot take an import).
+  // Pulls a playlist's songs into Must play.
   const importSongs = async (url) => {
-    const targetField = field.allowImport ? field : songFields.find((f) => f.allowImport && !isLegacy(f.key));
-    if (!targetField) throw new Error('There is no list to import into.');
+    const targetField = songFields.find((f) => f.allowImport && !isLegacy(f.key));
+    if (!targetField) return '';
     const existing = songsOf(targetField.key);
     const res = await fetch(`${API_BASE}/music/playlist?url=${encodeURIComponent(url)}`);
     const data = await res.json().catch(() => ({}));
@@ -98,35 +89,22 @@ export default function MusicPlanner({ fields, answers, onChange, disabled = fal
     const added = fresh.slice(0, Math.max(targetField.max - existing.length, 0));
     if (added.length) onChange(targetField.key, [...existing, ...added]);
     return added.length === 0
-      ? 'Nothing new to add from that playlist.'
-      : `Added ${added.length} song${added.length === 1 ? '' : 's'} to ${targetField.label}${fresh.length > added.length ? ` (${fresh.length - added.length} left out, the list is full)` : ''}.`;
-  };
-
-  const importPlaylist = async () => {
-    const url = importUrl.trim();
-    if (!url || !field.allowImport) return;
-    setImporting(true);
-    setNote('');
-    setError('');
-    try {
-      setNote(await importSongs(url));
-      setImportUrl('');
-      setPanel(null);
-    } catch (err) {
-      setError(err.message || 'Import failed');
-    } finally {
-      setImporting(false);
-    }
+      ? 'no new songs to add'
+      : `added ${added.length} song${added.length === 1 ? '' : 's'} to ${targetField.label}${fresh.length > added.length ? ` (${fresh.length - added.length} left out, the list is full)` : ''}`;
   };
 
   const links = linkField && Array.isArray(answers[linkField.key]) ? answers[linkField.key] : [];
   const linksFull = linkField ? links.length >= linkField.max : true;
 
+  // Paste any playlist link: it is always saved; Apple Music and Deezer
+  // playlists also have their songs pulled into Must play, since those
+  // catalogues allow it. Spotify and YouTube are saved as links only.
   const addLink = async () => {
     const url = linkUrl.trim();
     if (!url || !linkField || linksFull) return;
     setAddingLink(true);
     setLinkError('');
+    setLinkNote('');
     try {
       const res = await fetch(`${API_BASE}/music/link?url=${encodeURIComponent(url)}`);
       const data = await res.json().catch(() => ({}));
@@ -134,27 +112,25 @@ export default function MusicPlanner({ fields, answers, onChange, disabled = fal
       if (links.some((l) => l.url === data.url)) throw new Error('That playlist is already here.');
       onChange(linkField.key, [...links, { url: data.url, provider: data.provider, title: data.title, thumbnail: data.thumbnail }]);
       setLinkUrl('');
+      const name = data.title ? `"${data.title}"` : `your ${data.providerLabel} playlist`;
+      if (data.importable) {
+        try {
+          const outcome = await importSongs(data.url);
+          setLinkNote(`Saved ${name} and ${outcome}.`);
+        } catch (err) {
+          setLinkNote(`Saved ${name}. We could not read its songs (${friendly(err, 'import failed')}), so add the important ones below.`);
+        }
+      } else {
+        setLinkNote(`Saved ${name}. We'll open it in our own account.`);
+      }
     } catch (err) {
-      setLinkError(err.message || 'Could not read that link');
+      setLinkError(friendly(err, 'Could not read that link'));
     } finally {
       setAddingLink(false);
     }
   };
 
   const removeLink = (link) => onChange(linkField.key, links.filter((l) => l.url !== link.url));
-
-  const importFromLink = async (link) => {
-    setImportingKey(link.url);
-    setLinkError('');
-    setNote('');
-    try {
-      setNote(await importSongs(link.url));
-    } catch (err) {
-      setLinkError(err.message || 'Import failed');
-    } finally {
-      setImportingKey(null);
-    }
-  };
 
   const switchFromLegacy = (key) => {
     if (window.confirm('Switch to song search? The text you typed before will be cleared so you can pick the songs properly.')) onChange(key, []);
@@ -174,8 +150,6 @@ export default function MusicPlanner({ fields, answers, onChange, disabled = fal
                   <PlaylistLinkRow
                     key={link.url}
                     link={link}
-                    onImport={disabled ? null : importFromLink}
-                    importing={importingKey === link.url}
                     action={
                       !disabled && (
                         <button type="button" className="song__btn song__remove" onClick={() => removeLink(link)} aria-label={`Remove ${link.title || 'playlist'}`}><CloseIcon /></button>
@@ -194,6 +168,7 @@ export default function MusicPlanner({ fields, answers, onChange, disabled = fal
               </div>
             )}
             {linkError && <p className="notice notice--error small" role="alert">{linkError}</p>}
+            {linkNote && <p className="notice notice--ok small" role="status">{linkNote}</p>}
           </section>
         )}
 
@@ -231,23 +206,7 @@ export default function MusicPlanner({ fields, answers, onChange, disabled = fal
             </p>
           )}
           {error && <p className="notice notice--error small" role="alert">{error}</p>}
-          {note && <p className="notice notice--ok small" role="status">{note}</p>}
 
-          {panel === 'import' && field.allowImport ? (
-            <div className="music__panel">
-              <input type="url" value={importUrl} onChange={(e) => setImportUrl(e.target.value)} placeholder="Paste an Apple Music or Deezer playlist link" aria-label="Playlist link" autoFocus />
-              <button type="button" className="button button--small" onClick={importPlaylist} disabled={importing || !importUrl.trim() || full}>
-                {importing ? 'Importing…' : `Import to ${field.label}`}
-              </button>
-              <button type="button" className="button button--link" onClick={() => setPanel(null)}>Cancel</button>
-            </div>
-          ) : (
-            field.allowImport && (
-              <p className="music__more muted small">
-                <button type="button" className="button button--link" onClick={() => setPanel('import')}>Import a playlist</button>
-              </p>
-            )
-          )}
         </div>
       )}
 

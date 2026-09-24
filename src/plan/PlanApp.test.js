@@ -222,33 +222,6 @@ test('a song the catalogue does not have can be typed in to the chosen list', as
   ]);
 });
 
-test('a playlist link imports its songs into the chosen list, skipping ones already there', async () => {
-  visit(`/plan/${TOKEN}`);
-  await screen.findByLabelText('Search for a song');
-  search('bright');
-  await waitResults();
-  fireEvent.click(results().getByRole('button', { name: 'Add Mr Brightside by The Killers' }));
-
-  fireEvent.click(screen.getByRole('button', { name: 'Import a playlist' }));
-  fireEvent.change(screen.getByLabelText('Playlist link'), { target: { value: 'https://music.apple.com/gb/playlist/x/pl.u-abc' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Import to Must play' }));
-
-  expect(await screen.findByRole('status')).toHaveTextContent('Added 1 song to Must play.');
-  const must = picker('Must play');
-  expect(must.getByRole('button', { name: 'Remove Dancing Queen' })).toBeInTheDocument();
-  expect(must.getAllByRole('button', { name: /^Remove / })).toHaveLength(2);
-  expect(must.getByText('2 / 100')).toBeInTheDocument();
-});
-
-test('a Spotify playlist link gets the explanation from the service', async () => {
-  visit(`/plan/${TOKEN}`);
-  await screen.findByLabelText('Search for a song');
-  fireEvent.click(screen.getByRole('button', { name: 'Import a playlist' }));
-  fireEvent.change(screen.getByLabelText('Playlist link'), { target: { value: 'https://open.spotify.com/playlist/abc' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Import to Must play' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('Spotify playlists cannot be imported.');
-});
-
 test('sending posts the picked songs and time fields, then allows editing again', async () => {
   visit(`/plan/${TOKEN}`);
   await screen.findByLabelText('Search for a song');
@@ -410,16 +383,6 @@ test('a typed-in song has no preview button', async () => {
   expect(picker('Do not play').queryByRole('button', { name: /Preview/ })).not.toBeInTheDocument();
 });
 
-test('playlist import is offered only for the big lists', async () => {
-  visit(`/plan/${TOKEN}`);
-  await screen.findByLabelText('Search for a song');
-  expect(screen.getByRole('button', { name: 'Import a playlist' })).toBeInTheDocument();
-  chooseList('Do not play');
-  expect(screen.getByRole('button', { name: 'Import a playlist' })).toBeInTheDocument();
-  chooseList('Last song of the night');
-  expect(screen.queryByRole('button', { name: 'Import a playlist' })).not.toBeInTheDocument();
-});
-
 test('the search target falls back when the chosen list is typed-in text', async () => {
   current = view({ answers: { mustPlay: 'Mr Brightside\nDancing Queen' }, submittedAt: 'x', updatedAt: 'x' });
   visit(`/plan/${TOKEN}`);
@@ -459,7 +422,7 @@ test('the guest count starts from the enquiry, is editable, and a saved value wi
   expect(await screen.findByLabelText('Number of guests')).toHaveValue(95);
 });
 
-test('a shared Spotify playlist link is saved with its title, shows an open link, and cannot import songs', async () => {
+test('a shared Spotify playlist link is saved with its title and shows an open link, with no songs pulled in', async () => {
   visit(`/plan/${TOKEN}`);
   await screen.findByLabelText('Search for a song');
   const lists = picker('Playlists you love');
@@ -471,8 +434,9 @@ test('a shared Spotify playlist link is saved with its title, shows an open link
   const open = await lists.findByRole('link', { name: 'Our wedding vibes' });
   expect(open).toHaveAttribute('href', 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M');
   expect(lists.getByText('Spotify')).toBeInTheDocument();
-  expect(lists.queryByRole('button', { name: /Import songs/ })).not.toBeInTheDocument();
+  expect(await lists.findByRole('status')).toHaveTextContent('Saved "Our wedding vibes". We\'ll open it in our own account.');
   expect(lists.getByText('1 / 10')).toBeInTheDocument();
+  expect(picker('Must play').queryByRole('button', { name: /^Remove / })).not.toBeInTheDocument();
 
   fireEvent.click(screen.getByRole('button', { name: 'Send us your details' }));
   await waitFor(() => expect(posts).toHaveLength(1));
@@ -485,17 +449,34 @@ test('a shared Spotify playlist link is saved with its title, shows an open link
   expect(lists.queryByRole('link', { name: 'Our wedding vibes' })).not.toBeInTheDocument();
 });
 
-test('a Deezer playlist link can also pull its songs into Must play', async () => {
+test('a Deezer playlist link is saved and its songs are pulled into Must play automatically, skipping ones already there', async () => {
   visit(`/plan/${TOKEN}`);
   await screen.findByLabelText('Search for a song');
+  search('bright');
+  await waitResults();
+  fireEvent.click(results().getByRole('button', { name: 'Add Mr Brightside by The Killers' }));
+
   const lists = picker('Playlists you love');
   fireEvent.change(lists.getByLabelText('Playlist link to add'), { target: { value: 'https://www.deezer.com/en/playlist/3155776842' } });
   fireEvent.click(lists.getByRole('button', { name: 'Add playlist' }));
-  fireEvent.click(await lists.findByRole('button', { name: 'Import songs from Top Worldwide' }));
-  expect(await screen.findByRole('status')).toHaveTextContent('Added 2 songs to Must play.');
-  expect(picker('Must play').getByRole('button', { name: 'Remove Dancing Queen' })).toBeInTheDocument();
+
+  expect(await lists.findByRole('status')).toHaveTextContent('Saved "Top Worldwide" and added 1 song to Must play.');
+  expect(lists.getByRole('link', { name: 'Top Worldwide' })).toBeInTheDocument();
+  const must = picker('Must play');
+  expect(must.getByRole('button', { name: 'Remove Dancing Queen' })).toBeInTheDocument();
+  expect(must.getAllByRole('button', { name: /^Remove / })).toHaveLength(2);
+  expect(screen.queryByRole('button', { name: 'Import a playlist' })).not.toBeInTheDocument();
 });
 
+test('a network failure while adding a link is explained in plain words', async () => {
+  visit(`/plan/${TOKEN}`);
+  await screen.findByLabelText('Search for a song');
+  global.fetch.mockImplementationOnce(async () => { throw new TypeError('Failed to fetch'); });
+  const lists = picker('Playlists you love');
+  fireEvent.change(lists.getByLabelText('Playlist link to add'), { target: { value: 'https://open.spotify.com/playlist/x' } });
+  fireEvent.click(lists.getByRole('button', { name: 'Add playlist' }));
+  expect(await lists.findByRole('alert')).toHaveTextContent('Could not reach the server. Check your connection and try again.');
+});
 test('an unsupported playlist link is explained and a duplicate is refused', async () => {
   visit(`/plan/${TOKEN}`);
   await screen.findByLabelText('Search for a song');
