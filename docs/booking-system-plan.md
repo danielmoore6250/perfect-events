@@ -232,7 +232,7 @@ Branch `bookings-phase-3`.
 - The empty booking list now says why it is empty ("1 booking hidden because the
   date has passed") with a one-click fix.
 
-Tests: 14 for the calendar Lambda, 25 for the admin Lambda, 13 React cases.
+Tests: 16 for the calendar Lambda, 25 for the admin Lambda, 13 React cases.
 
 ### To deploy and try
 

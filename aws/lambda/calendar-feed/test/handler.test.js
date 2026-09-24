@@ -123,7 +123,34 @@ test('a booked event becomes an all-day VEVENT with the client details', async (
   assert.ok(description.includes('Guests: 150'));
   assert.ok(description.includes('Quote: £1250.00 (balance £1000.00 due)'));
   assert.ok(description.includes('Stage: booked'));
-  assert.ok(description.includes('Ceremony at 2pm\; band until 11.'), 'semicolons in notes are escaped');
+  // One literal backslash before the semicolon (doubled here because this is JS source).
+  assert.ok(description.includes('Ceremony at 2pm\\; band until 11.'), 'semicolons in notes are escaped');
+  assert.ok(!description.includes('2pm; band'), 'an unescaped semicolon must not appear');
+});
+
+test('backslashes, commas and newlines in text are escaped per RFC 5545', async () => {
+  const { handler } = loadModule();
+  bookings = [booking({ notes: 'Path C:\\temp, then; done\nSecond line', event: { type: 'private', venue: 'The Barn; Comber' } })];
+  const raw = (await handler(request(TOKEN))).body;
+  const body = unfold(raw);
+
+  const description = body.match(/DESCRIPTION:(.*)/)[1];
+  assert.ok(description.includes('Path C:\\\\temp\\, then\\; done\\nSecond line'));
+  assert.ok(body.includes('LOCATION:The Barn\\; Comber'));
+  assert.ok(!raw.includes('Barn; Comber'), 'a bare semicolon must never appear in text');
+});
+
+test('bookings with an impossible calendar date are left out rather than emitted as a bad DTSTART', async () => {
+  const { handler } = loadModule();
+  bookings = [
+    booking({ id: 'feb30', eventDate: '2027-02-30' }),
+    booking({ id: 'apr31', eventDate: '2027-04-31' }),
+    booking({ id: 'leap', eventDate: '2028-02-29' }),
+    booking({ id: 'notleap', eventDate: '2027-02-29' })
+  ];
+  const body = unfold((await handler(request(TOKEN))).body);
+  const uids = [...body.matchAll(/UID:(\w+)@/g)].map((m) => m[1]);
+  assert.deepEqual(uids, ['leap']);
 });
 
 test('a paid balance is reported as paid', async () => {

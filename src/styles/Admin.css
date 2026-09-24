@@ -219,7 +219,7 @@
 .facts--stacked dt { margin-top: 10px; color: var(--text); font-weight: 600; }
 .facts--stacked dt:first-child { margin-top: 0; }
 .facts--stacked dd { color: var(--text-muted); }
-.card + .card { margin-top: 16px; }
+.stack { display: flex; flex-direction: column; gap: 16px; }
 
 @media (max-width: 800px) {
   .detail__grid { grid-template-columns: 1fr; }

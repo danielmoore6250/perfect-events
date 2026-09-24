@@ -36,11 +36,13 @@ const WEDDING_PACKAGE_LABELS = {
 
 // ---- iCalendar formatting ------------------------------------------------
 
-// RFC 5545 text escaping: backslash, semicolon, comma and newlines.
+// RFC 5545 text escaping: backslash, semicolon, comma and newlines. Each
+// replacement is one literal backslash then the character, so the backslash
+// is doubled in this source.
 const escapeText = (value) =>
   String(value ?? '')
     .replace(/\\/g, '\\\\')
-    .replace(/;/g, '\;')
+    .replace(/;/g, '\\;')
     .replace(/,/g, '\\,')
     .replace(/\r?\n/g, '\\n');
 
@@ -78,7 +80,15 @@ const dtstamp = (iso) => {
   return stamp.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
 };
 
-const isIsoDate = (value) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+// Strict YYYY-MM-DD: the enquiry form can store a value like 2027-02-30 that
+// only looks like a date, and a booking is never revalidated when its stage
+// changes, so the feed must not emit it as a DTSTART.
+const isIsoDate = (value) => {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+};
 
 const formatMoney = (amount) => (typeof amount === 'number' ? `£${amount.toFixed(2)}` : null);
 

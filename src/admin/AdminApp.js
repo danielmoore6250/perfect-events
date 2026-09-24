@@ -637,6 +637,7 @@ function CalendarPage({ onBack, onAuthLost }) {
 
       {error && <p className="notice notice--error" role="alert">{error}</p>}
 
+      <div className="stack">
       <div className="card">
         <h2 className="card__title">Your private link</h2>
         {calendar ? (
@@ -666,6 +667,7 @@ function CalendarPage({ onBack, onAuthLost }) {
           <dt>Google Calendar</dt>
           <dd>On the web, next to "Other calendars" press + → From URL, paste the link. Google refreshes subscribed calendars a few times a day.</dd>
         </dl>
+      </div>
       </div>
     </section>
   );
