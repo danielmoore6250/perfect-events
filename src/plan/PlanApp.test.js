@@ -282,6 +282,9 @@ test('previous song picks are shown on return, and legacy typed text is editable
   const first = picker('First dance');
   expect(first.getByLabelText('First dance')).toHaveValue('Yellow – Coldplay');
   expect(first.queryByRole('button', { name: 'Add to First dance' })).not.toBeInTheDocument();
+  // A typed-in list cannot be chosen as the search target, so its text is never silently replaced.
+  const legacyOption = within(screen.getByLabelText('Adding to')).getByRole('option', { name: 'First dance (typed in)' });
+  expect(legacyOption).toBeDisabled();
   fireEvent.click(first.getByRole('button', { name: 'Use song search instead' }));
   expect(window.confirm).toHaveBeenCalled();
   expect(first.getByRole('button', { name: 'Add to First dance' })).toBeInTheDocument();
@@ -391,4 +394,27 @@ test('a typed-in song has no preview button', async () => {
   visit(`/plan/${TOKEN}`);
   await screen.findByRole('group', { name: 'Do not play' });
   expect(picker('Do not play').queryByRole('button', { name: /Preview/ })).not.toBeInTheDocument();
+});
+
+test('playlist import is offered only for the big lists', async () => {
+  visit(`/plan/${TOKEN}`);
+  await screen.findByLabelText('Search for a song');
+  expect(screen.getByRole('button', { name: 'Import a playlist' })).toBeInTheDocument();
+  chooseList('Do not play');
+  expect(screen.getByRole('button', { name: 'Import a playlist' })).toBeInTheDocument();
+  chooseList('First dance');
+  expect(screen.queryByRole('button', { name: 'Import a playlist' })).not.toBeInTheDocument();
+  chooseList('Last song of the night');
+  expect(screen.queryByRole('button', { name: 'Import a playlist' })).not.toBeInTheDocument();
+});
+
+test('the search target falls back when the chosen list is typed-in text', async () => {
+  current = view({ answers: { mustPlay: 'Mr Brightside\nDancing Queen' }, submittedAt: 'x', updatedAt: 'x' });
+  visit(`/plan/${TOKEN}`);
+  await screen.findByLabelText('Search for a song');
+  // Must play is the usual default but is legacy text here, so the selector lands on the first usable list.
+  await waitFor(() => expect(screen.getByLabelText('Adding to')).not.toHaveValue('mustPlay'));
+  expect(screen.getByLabelText('Adding to')).toHaveValue('firstDance');
+  expect(within(screen.getByLabelText('Adding to')).getByRole('option', { name: 'Must play (typed in)' })).toBeDisabled();
+  expect(picker('Must play').getByLabelText('Must play')).toHaveValue('Mr Brightside\nDancing Queen');
 });

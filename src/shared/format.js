@@ -59,8 +59,8 @@ export const PLANNING_SECTIONS = [
       { key: 'parentDances', label: 'Parent dances (if any)', type: 'songs', max: 5, weddingOnly: true },
       { key: 'lastSong', label: 'Last song of the night', type: 'songs', max: 1 },
       { key: 'mustPlay', label: 'Must play', type: 'songs', max: 100, allowImport: true, hint: 'The ones the night is not complete without.' },
-      { key: 'playIfPossible', label: 'Play if possible', type: 'songs', max: 100, hint: "Songs you'd love to hear if they fit the room." },
-      { key: 'doNotPlay', label: 'Do not play', type: 'songs', max: 100 },
+      { key: 'playIfPossible', label: 'Play if possible', type: 'songs', max: 100, allowImport: true, hint: "Songs you'd love to hear if they fit the room." },
+      { key: 'doNotPlay', label: 'Do not play', type: 'songs', max: 100, allowImport: true },
       { key: 'musicStyle', label: 'What gets your crowd going?', type: 'long', placeholder: 'Eras, genres, artists, the vibe you want' },
       { key: 'announcements', label: 'Anything to announce?', type: 'long', placeholder: 'Cake cutting, toasts, a birthday in the room' }
     ]

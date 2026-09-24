@@ -81,10 +81,15 @@ export default function MusicPlanner({ fields, answers, onChange, disabled = fal
 
   useEffect(() => subscribePreview(setPlaying), []);
 
-  // If the destination list disappears (wedding-only fields on a non-wedding), fall back.
+  // If the destination list disappears (wedding-only fields on a non-wedding)
+  // or is legacy text, fall back to the first list that can take songs.
   useEffect(() => {
-    if (!fields.some((f) => f.key === destination)) setDestination(fields[0]?.key);
-  }, [fields, destination]);
+    const ok = fields.find((f) => f.key === destination && typeof answers[f.key] !== 'string');
+    if (!ok) {
+      const first = fields.find((f) => typeof answers[f.key] !== 'string') || fields[0];
+      if (first && first.key !== destination) setDestination(first.key);
+    }
+  }, [fields, destination, answers]);
 
   useEffect(() => {
     const term = query.trim();
@@ -120,7 +125,12 @@ export default function MusicPlanner({ fields, answers, onChange, disabled = fal
   }, [query]);
 
   const songsOf = (key) => (Array.isArray(answers[key]) ? answers[key] : []);
-  const field = fields.find((f) => f.key === destination) || fields[0];
+  // A list still holding typed-in text from before the picker is not a target:
+  // adding to it would silently replace the text. It becomes one after the
+  // client chooses "Use song search instead".
+  const isLegacy = (key) => typeof answers[key] === 'string';
+  const targetable = fields.filter((f) => !isLegacy(f.key));
+  const field = targetable.find((f) => f.key === destination) || targetable[0] || fields[0];
   const current = songsOf(field.key);
   const full = current.length >= field.max;
   const has = (song) => current.some((s) => songKey(s) === songKey(song));
@@ -133,7 +143,7 @@ export default function MusicPlanner({ fields, answers, onChange, disabled = fal
   };
 
   const add = (song) => {
-    if (full || has(song)) return;
+    if (full || has(song) || isLegacy(field.key)) return;
     onChange(field.key, [...current, song]);
     if (field.max === 1) {
       setQuery('');
@@ -154,7 +164,7 @@ export default function MusicPlanner({ fields, answers, onChange, disabled = fal
 
   const importPlaylist = async () => {
     const url = importUrl.trim();
-    if (!url) return;
+    if (!url || !field.allowImport) return;
     setImporting(true);
     setNote('');
     setError('');
@@ -193,9 +203,10 @@ export default function MusicPlanner({ fields, answers, onChange, disabled = fal
               <select value={destination} onChange={(e) => target(e.target.value)}>
                 {fields.map((f) => {
                   const n = songsOf(f.key).length;
+                  const legacy = isLegacy(f.key);
                   return (
-                    <option key={f.key} value={f.key}>
-                      {f.label}{n >= f.max ? ' (full)' : f.max > 1 && n > 0 ? ` (${n})` : ''}
+                    <option key={f.key} value={f.key} disabled={legacy}>
+                      {f.label}{legacy ? ' (typed in)' : n >= f.max ? ' (full)' : f.max > 1 && n > 0 ? ` (${n})` : ''}
                     </option>
                   );
                 })}
@@ -249,7 +260,7 @@ export default function MusicPlanner({ fields, answers, onChange, disabled = fal
               <button type="button" className="button button--small" onClick={addManual} disabled={!manualTitle.trim() || full} aria-label={`Add typed-in song to ${field.label}`}>Add to {field.label}</button>
               <button type="button" className="button button--link" onClick={() => setPanel(null)}>Cancel</button>
             </div>
-          ) : panel === 'import' ? (
+          ) : panel === 'import' && field.allowImport ? (
             <div className="music__panel">
               <input type="url" value={importUrl} onChange={(e) => setImportUrl(e.target.value)} placeholder="Paste an Apple Music or Deezer playlist link" aria-label="Playlist link" autoFocus />
               <button type="button" className="button button--small" onClick={importPlaylist} disabled={importing || !importUrl.trim() || full}>
@@ -260,8 +271,12 @@ export default function MusicPlanner({ fields, answers, onChange, disabled = fal
           ) : (
             <p className="music__more muted small">
               <button type="button" className="button button--link" onClick={() => setPanel('manual')}>Can't find it? Type it in</button>
-              <span aria-hidden="true"> · </span>
-              <button type="button" className="button button--link" onClick={() => setPanel('import')}>Import a playlist</button>
+              {field.allowImport && (
+                <>
+                  <span aria-hidden="true"> · </span>
+                  <button type="button" className="button button--link" onClick={() => setPanel('import')}>Import a playlist</button>
+                </>
+              )}
             </p>
           )}
         </div>
