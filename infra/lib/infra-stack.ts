@@ -378,21 +378,14 @@ export class InfraStack extends cdk.Stack {
     httpApi.addRoutes({ path: '/music/search', methods: [apigatewayv2.HttpMethod.GET], integration: musicIntegration });
     httpApi.addRoutes({ path: '/music/playlist', methods: [apigatewayv2.HttpMethod.GET], integration: musicIntegration });
 
-    // Per-route throttling on the default stage. Search is a type-ahead so it
-    // gets more headroom; a playlist import is a handful per event at most.
-    // These are totals across all callers, sized for a handful of clients
-    // planning at once, not for a public product.
-    // RouteSettings is passed straight through to CloudFormation, so the keys
-    // must be the PascalCase names CloudFormation expects.
+    // Stage-wide throttle. Per-route settings were tried first and bit twice:
+    // CloudFormation applies the stage before new routes exist, and a rollback
+    // then tries to remove settings for keys it never created. A single default
+    // limit has no route keys to trip over. It is a ceiling on total requests
+    // per second across every route; the music Lambda's reserved concurrency
+    // and its own per-address counter do the finer-grained work.
     const defaultStage = httpApi.defaultStage?.node.defaultChild as apigatewayv2.CfnStage;
-    const throttle = (rate: number, burst: number) => ({ ThrottlingRateLimit: rate, ThrottlingBurstLimit: burst });
-    defaultStage.routeSettings = {
-      'GET /music/search': throttle(10, 20),
-      'GET /music/playlist': throttle(1, 3),
-      'GET /plan/{token}': throttle(5, 10),
-      'POST /plan/{token}': throttle(2, 5),
-      'POST /send-enquiry': throttle(2, 5),
-    };
+    defaultStage.defaultRouteSettings = { throttlingRateLimit: 20, throttlingBurstLimit: 40 };
 
     // The client planning form: <api>/plan/<token>. Token is the credential.
     httpApi.addRoutes({
