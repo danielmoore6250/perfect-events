@@ -372,7 +372,12 @@ test('playlist links are validated', async () => {
     ['http://open.spotify.com/playlist/abc', 400, /https/],
     ['https://example.com/playlist/1', 400, /Spotify, Apple Music, Deezer or YouTube/],
     ['https://open.spotify.com/track/abc', 400, /not a playlist/],
-    ['https://www.deezer.com/en/track/1', 400, /not a playlist/]
+    ['https://open.spotify.com/album/abc', 400, /not a playlist/],
+    ['https://www.deezer.com/en/track/1', 400, /not a playlist/],
+    ['https://www.deezer.com/en/album/1', 400, /not a playlist/],
+    ['https://music.apple.com/gb/album/divide/1193701079', 400, /not a playlist/],
+    ['https://www.youtube.com/watch?v=abc', 400, /not a playlist/],
+    ['https://youtu.be/abc', 400, /Spotify, Apple Music, Deezer or YouTube/]
   ];
   for (const [url, status, pattern] of cases) {
     const res = await handler(request('/music/link', { url }));

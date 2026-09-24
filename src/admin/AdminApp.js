@@ -393,6 +393,8 @@ function SongAnswer({ value }) {
 function PlanningCard({ booking, onBookingChange, onAuthLost }) {
   const [playing, setPlaying] = useState(null);
   useEffect(() => subscribePreview(setPlaying), []);
+  // This card owns preview buttons (dances too), so leaving it stops the player.
+  useEffect(() => () => stopPreview(), []);
   const [copied, setCopied] = useState(false);
   const [copiedSetlist, setCopiedSetlist] = useState(false);
   const [busy, setBusy] = useState(false);

@@ -489,7 +489,8 @@ test('playlist links are validated', async () => {
     [{ playlistLinks: ['https://open.spotify.com/playlist/x'] }, /entries must be links/],
     [{ playlistLinks: [{ url: 'http://open.spotify.com/playlist/x', provider: 'spotify' }] }, /Spotify, Apple Music, Deezer or YouTube/],
     [{ playlistLinks: [{ url: 'https://example.com/playlist/x', provider: 'spotify' }] }, /Spotify, Apple Music, Deezer or YouTube/],
-    [{ playlistLinks: [{ url: 'https://open.spotify.com/playlist/x', provider: 'tidal' }] }, /unknown provider/],
+    [{ playlistLinks: [{ url: 'https://open.spotify.com/album/x', provider: 'spotify' }] }, /not a playlist/],
+    [{ playlistLinks: [{ url: 'https://www.youtube.com/watch?v=x', provider: 'youtube' }] }, /not a playlist/],
     [{ playlistLinks: [{ url: 'https://open.spotify.com/playlist/x', provider: 'spotify', thumbnail: 'javascript:alert(1)' }] }, /https link/],
     [{ playlistLinks: [{ url: 'https://open.spotify.com/playlist/x', provider: 'spotify', title: 42 }] }, /must be text/],
     [{ playlistLinks: Array(11).fill({ url: 'https://open.spotify.com/playlist/x', provider: 'spotify' }) }, /at most 10/]
@@ -541,4 +542,13 @@ test('named dances are validated', async () => {
     assert.equal(r.statusCode, 400, JSON.stringify(answers).slice(0, 60));
     assert.match(JSON.parse(r.body).error, pattern);
   }
+});
+
+test('a playlist link\'s provider comes from the link, not from the client', async () => {
+  const { handler } = loadModule();
+  const res = await handler(
+    request('POST', TOKEN, { answers: { playlistLinks: [{ url: 'https://www.youtube.com/playlist?list=PLabc', provider: 'spotify', title: 'Mislabelled' }] } })
+  );
+  assert.equal(res.statusCode, 200);
+  assert.equal(store['abc-123'].planning.answers.playlistLinks[0].provider, 'youtube');
 });

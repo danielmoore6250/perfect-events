@@ -543,6 +543,7 @@ test('playlists come before the song search, and the old free-text boxes fold in
   const finder = screen.getByRole('group', { name: 'Add songs' });
   expect(party.compareDocumentPosition(finder) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(screen.getByLabelText('Anything else we need to know?')).toHaveValue('90s bangers\n\nCake at 9');
+  expect(within(screen.getByLabelText('Adding to')).queryByRole('option', { name: /Playlists/ })).not.toBeInTheDocument();
   expect(screen.queryByLabelText('What gets your crowd going?')).not.toBeInTheDocument();
   expect(screen.queryByLabelText('Anything to announce?')).not.toBeInTheDocument();
 });
@@ -564,4 +565,81 @@ test('times are picked from a quarter-hour list, and an odd saved time is still 
   expect(Array.from(finish.options).map((o) => o.value).filter(Boolean)).toHaveLength(96);
   fireEvent.change(finish, { target: { value: '00:45' } });
   expect(finish).toHaveValue('00:45');
+});
+
+test('old free-text answers are kept even when the new box already has text', async () => {
+  current = view({ answers: { extraNotes: 'Keep this', musicStyle: '90s bangers', announcements: 'Cake at 9' }, submittedAt: 'x', updatedAt: 'x' });
+  visit(`/plan/${TOKEN}`);
+  expect(await screen.findByLabelText('Anything else we need to know?')).toHaveValue('Keep this\n\n90s bangers\n\nCake at 9');
+});
+
+test('removing a dance does not hand its search panel to the next dance', async () => {
+  visit(`/plan/${TOKEN}`);
+  await screen.findByRole('group', { name: 'Other dances' });
+  const dances = picker('Other dances');
+  fireEvent.click(dances.getByRole('button', { name: 'Add a dance' }));
+  fireEvent.change(dances.getByLabelText('Name of dance 1'), { target: { value: 'First' } });
+  fireEvent.click(dances.getByRole('button', { name: 'Add a dance' }));
+  fireEvent.change(dances.getByLabelText('Name of dance 2'), { target: { value: 'Second' } });
+
+  // Start a search in the first dance, then remove that dance.
+  fireEvent.change(within(screen.getByRole('group', { name: 'Dance: First' })).getByLabelText('Search for the First song'), { target: { value: 'perf' } });
+  await waitResults();
+  fireEvent.click(dances.getByRole('button', { name: 'Remove dance First' }));
+
+  // The remaining dance has no leftover results or query.
+  expect(screen.queryByRole('list', { name: 'Search results' })).not.toBeInTheDocument();
+  const second = within(screen.getByRole('group', { name: 'Dance: Second' }));
+  expect(second.getByLabelText('Search for the Second song')).toHaveValue('');
+});
+
+test('the dance rows never send their page-only ids to the server', async () => {
+  visit(`/plan/${TOKEN}`);
+  await screen.findByRole('group', { name: 'Other dances' });
+  fireEvent.click(picker('Other dances').getByRole('button', { name: 'Add a dance' }));
+  fireEvent.change(picker('Other dances').getByLabelText('Name of dance 1'), { target: { value: 'Bridal party' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send us your details' }));
+  await waitFor(() => expect(posts).toHaveLength(1));
+  expect(posts[0].answers.namedDances).toEqual([{ name: 'Bridal party', song: null }]);
+});
+
+test('a playlist import merges with songs added while it was in flight', async () => {
+  let resolvePlaylist;
+  const original = global.fetch.getMockImplementation();
+  global.fetch.mockImplementation(async (url, init) => {
+    if (url.startsWith(`${API_BASE}/music/playlist`)) {
+      await new Promise((r) => { resolvePlaylist = r; });
+      return jsonResponse(200, { source: 'deezer', songs: [song(300, 'Dancing Queen', 'ABBA')] });
+    }
+    return original(url, init);
+  });
+  visit(`/plan/${TOKEN}`);
+  await screen.findByLabelText('Search for a song');
+
+  const lists = picker('Playlists you love');
+  fireEvent.change(lists.getByLabelText('Playlist link to add'), { target: { value: 'https://www.deezer.com/en/playlist/3155776842' } });
+  fireEvent.click(lists.getByRole('button', { name: 'Add playlist' }));
+  await waitFor(() => expect(resolvePlaylist).toBeDefined());
+
+  // While the import is running the client adds a song by hand.
+  search('bright');
+  await waitResults();
+  fireEvent.click(results().getByRole('button', { name: 'Add Mr Brightside by The Killers' }));
+
+  resolvePlaylist();
+  expect(await lists.findByRole('status')).toHaveTextContent('added 1 song to Must play');
+  const must = picker('Must play');
+  expect(must.getByRole('button', { name: 'Remove Mr Brightside' })).toBeInTheDocument();
+  expect(must.getByRole('button', { name: 'Remove Dancing Queen' })).toBeInTheDocument();
+});
+
+test('a playlist is saved but not imported when Must play still holds typed-in text', async () => {
+  current = view({ answers: { mustPlay: 'Old typed list' }, submittedAt: 'x', updatedAt: 'x' });
+  visit(`/plan/${TOKEN}`);
+  await screen.findByLabelText('Search for a song');
+  const lists = picker('Playlists you love');
+  fireEvent.change(lists.getByLabelText('Playlist link to add'), { target: { value: 'https://www.deezer.com/en/playlist/3155776842' } });
+  fireEvent.click(lists.getByRole('button', { name: 'Add playlist' }));
+  expect(await lists.findByRole('status')).toHaveTextContent('typed-in text');
+  expect(picker('Must play').getByLabelText('Must play')).toHaveValue('Old typed list');
 });

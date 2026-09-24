@@ -122,10 +122,14 @@ const parseSongs = (raw, key, spec) => {
   return songs.length ? songs : undefined;
 };
 
-// One shared playlist link. The music service resolved the provider and title;
-// here we only make sure nothing but a real https link on a known host is kept.
-const LINK_HOSTS = /(^|\.)(spotify\.com|music\.apple\.com|deezer\.com|youtube\.com|youtu\.be)$/;
-const LINK_PROVIDERS = new Set(['spotify', 'apple', 'deezer', 'youtube']);
+// One shared playlist link. The provider is derived from the link itself and
+// the path must be a playlist, so the saved metadata can never mislead.
+const LINK_RULES = [
+  { provider: 'spotify', host: /(^|\.)spotify\.com$/, path: (u) => /^\/(?:intl-[a-z]+\/)?playlist\/[A-Za-z0-9]+\/?$/.test(u.pathname) },
+  { provider: 'apple', host: /(^|\.)music\.apple\.com$/, path: (u) => /\/playlist\/(?:[^/]+\/)?pl\.[A-Za-z0-9._-]+\/?$/.test(u.pathname) },
+  { provider: 'deezer', host: /(^|\.)deezer\.com$/, path: (u) => /\/playlist\/\d+\/?$/.test(u.pathname) },
+  { provider: 'youtube', host: /(^|\.)(youtube\.com|music\.youtube\.com)$/, path: (u) => /^\/playlist\/?$/.test(u.pathname) && /^[A-Za-z0-9_-]+$/.test(u.searchParams.get('list') || '') }
+];
 
 const parseLink = (raw, field) => {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new HttpError(400, `${field} entries must be links`);
@@ -136,11 +140,9 @@ const parseLink = (raw, field) => {
   } catch {
     throw new HttpError(400, `${field}: not a valid link`);
   }
-  if (parsed.protocol !== 'https:' || !LINK_HOSTS.test(parsed.hostname) || url.length > SONG_URL_MAX) {
-    throw new HttpError(400, `${field}: links must be Spotify, Apple Music, Deezer or YouTube`);
-  }
-  const provider = typeof raw.provider === 'string' && LINK_PROVIDERS.has(raw.provider) ? raw.provider : null;
-  if (!provider) throw new HttpError(400, `${field}: unknown provider`);
+  const rule = parsed.protocol === 'https:' && url.length <= SONG_URL_MAX ? LINK_RULES.find((r) => r.host.test(parsed.hostname)) : null;
+  if (!rule) throw new HttpError(400, `${field}: links must be Spotify, Apple Music, Deezer or YouTube`);
+  if (!rule.path(parsed)) throw new HttpError(400, `${field}: that link is not a playlist`);
   const text = (key) => {
     const v = raw[key];
     if (v === undefined || v === null) return null;
@@ -151,7 +153,7 @@ const parseLink = (raw, field) => {
   };
   const thumbnail = text('thumbnail');
   if (thumbnail && !isHttpsUrl(thumbnail)) throw new HttpError(400, `${field}: thumbnail must be an https link`);
-  return { url, provider, title: text('title')?.slice(0, 200) || null, thumbnail };
+  return { url, provider: rule.provider, title: text('title')?.slice(0, 200) || null, thumbnail };
 };
 
 const parseLinks = (raw, key, spec) => {

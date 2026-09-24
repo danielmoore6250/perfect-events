@@ -553,6 +553,13 @@ test('POST /admin/bookings defaults: booked stage, unknown date, no link below b
   assert.equal(b.status, 'quoted');
   assert.equal(b.planningToken, undefined, 'no link until booked');
   assert.equal(b.event.weddingPackage, null, 'package only applies to weddings');
+
+  for (const status of ['details-requested', 'details-received', 'completed']) {
+    res = await handler(request('POST', '/admin/bookings', { body: { name: 'Sam', status } }));
+    assert.ok(JSON.parse(res.body).booking.planningToken, `${status} gets a link`);
+  }
+  res = await handler(request('POST', '/admin/bookings', { body: { name: 'Sam', status: 'lost' } }));
+  assert.equal(JSON.parse(res.body).booking.planningToken, undefined, 'lost gets no link');
 });
 
 test('POST /admin/bookings validates', async () => {
@@ -566,6 +573,8 @@ test('POST /admin/bookings validates', async () => {
     [{ name: 'x', eventType: 'gig' }, /eventType must be one of/],
     [{ name: 'x', eventType: 'wedding', weddingPackage: 'all-day' }, /weddingPackage must be/],
     [{ name: 'x', guestCount: 'lots' }, /guestCount must be/],
+    [{ name: 'x', guestCount: '0' }, /between 1 and 5000/],
+    [{ name: 'x', guestCount: '5001' }, /between 1 and 5000/],
     [{ name: 'x', pricing: { quote: -1 } }, /non-negative/],
     [{ name: 42 }, /must be text/],
     [[], /Body must be a JSON object/]

@@ -283,7 +283,7 @@ picked up the timings.
 - Fields: number of guests (prefilled from the enquiry, editable; the client's
   number then wins in the admin view, email and calendar), set-up access, guest
   arrival (not weddings), meal (weddings and corporate only), speeches (wedding),
-  DJ start, finish; first dance and parent dances (wedding), last song, must play, do not
+  DJ start, finish; first dance and named "other dances" (wedding), last song, must play, do not
   play, and one free-text box "Anything else we need to know?" (the earlier
   music-style, announcements and trailing anything-else boxes are folded into it
   on load); venue contact name and phone, access notes. Playlist links sit at
@@ -363,8 +363,8 @@ shows it as a textarea with a "Use song search instead" switch.
   Both use `src/plan/SongFinder.js` for search and "type it in". This replaced a first version
   with a search box inside every list, which Daniel found cluttered. Search has
   a 300ms debounce, results show artwork and a 30-second preview (one shared
-  player, `src/shared/preview.js`), "Can't find it? Type it in" and "Import a
-  playlist" sit under the results and act on the selected list. Icons are small
+  player, `src/shared/preview.js`), "Can't find it? Type it in" sits under the
+  results and adds to the selected list. Icons are small
   inline SVGs in `src/shared/icons.js`.
 - Admin planning card shows song lists with artwork and an "Open" link, plus
   "Copy song lists as text" (Artist – Title per line) for Rekordbox/Serato prep.

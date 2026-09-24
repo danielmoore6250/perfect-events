@@ -49,8 +49,9 @@ const STATUSES = [
 
 const EVENT_TYPES = ['wedding', 'private', 'corporate', 'pa-hire'];
 const WEDDING_PACKAGES = ['full-night', 'after-band', 'not-sure'];
-// Stages at which the client should have their planning link.
-const PLANNING_STAGES = new Set(['booked', 'details-requested', 'details-received']);
+// Stages at which the client should have their planning link: Booked or
+// later, everything except lost.
+const PLANNING_STAGES = new Set(['booked', 'details-requested', 'details-received', 'completed']);
 
 const PRICING_FIELDS = ['quote', 'deposit', 'depositPaidOn', 'balancePaidOn'];
 const MONEY_FIELDS = new Set(['quote', 'deposit']);
@@ -216,7 +217,9 @@ const parseNewBooking = (body) => {
   if (weddingPackage && !WEDDING_PACKAGES.includes(weddingPackage)) throw new HttpError(400, `weddingPackage must be one of: ${WEDDING_PACKAGES.join(', ')}`);
 
   const guestCount = text('guestCount', 10);
-  if (guestCount && !/^\d{1,5}$/.test(guestCount)) throw new HttpError(400, 'guestCount must be a whole number');
+  if (guestCount && !(/^\d{1,4}$/.test(guestCount) && Number(guestCount) >= 1 && Number(guestCount) <= 5000)) {
+    throw new HttpError(400, 'guestCount must be a whole number between 1 and 5000');
+  }
 
   const notes = text('notes', MAX_NOTES_LENGTH) || null;
   const pricing = body.pricing === undefined || body.pricing === null ? null : parsePricing(body.pricing);

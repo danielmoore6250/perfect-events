@@ -39,6 +39,9 @@ export default function MusicPlanner({ fields, answers, onChange, disabled = fal
   const [linkNote, setLinkNote] = useState('');
   const [playing, setPlaying] = useState(null);
   const finderRef = useRef(null);
+  // The latest answers, for work that finishes after an await.
+  const answersRef = useRef(answers);
+  answersRef.current = answers;
 
   useEffect(() => subscribePreview(setPlaying), []);
 
@@ -76,21 +79,36 @@ export default function MusicPlanner({ fields, answers, onChange, disabled = fal
 
   const remove = (key, song) => onChange(key, songsOf(key).filter((s) => songKey(s) !== songKey(song)));
 
-  // Pulls a playlist's songs into Must play.
+  // Pulls a playlist's songs into Must play, merging with whatever the list
+  // holds by the time the fetch returns, not what it held when it started.
   const importSongs = async (url) => {
-    const targetField = songFields.find((f) => f.allowImport && !isLegacy(f.key));
-    if (!targetField) return '';
-    const existing = songsOf(targetField.key);
+    const targetField = songFields.find((f) => f.key === 'mustPlay');
+    if (!targetField) return 'no Must play list to add to';
+    if (isLegacy(targetField.key)) return 'Must play still has your typed-in text, so its songs were not added; switch it to song search first';
     const res = await fetch(`${API_BASE}/music/playlist?url=${encodeURIComponent(url)}`);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'Import failed');
-    const hasIn = (song) => existing.some((s) => songKey(s) === songKey(song));
-    const fresh = (data.songs || []).filter((s) => !hasIn(s));
-    const added = fresh.slice(0, Math.max(targetField.max - existing.length, 0));
-    if (added.length) onChange(targetField.key, [...existing, ...added]);
-    return added.length === 0
+    const incoming = data.songs || [];
+
+    // Merge functionally so songs added by hand during the fetch survive; the
+    // note is worked out from the latest answers at this moment.
+    const summarise = (existing) => {
+      const hasIn = (song) => existing.some((s) => songKey(s) === songKey(song));
+      const fresh = incoming.filter((s) => !hasIn(s));
+      const added = fresh.slice(0, Math.max(targetField.max - existing.length, 0));
+      return { fresh, added };
+    };
+    onChange(targetField.key, (prev) => {
+      const existing = Array.isArray(prev) ? prev : [];
+      const { added } = summarise(existing);
+      return added.length ? [...existing, ...added] : existing;
+    });
+    const now = answersRef.current[targetField.key];
+    const { fresh, added } = summarise(Array.isArray(now) ? now : []);
+    const outcome = added.length === 0
       ? 'no new songs to add'
       : `added ${added.length} song${added.length === 1 ? '' : 's'} to ${targetField.label}${fresh.length > added.length ? ` (${fresh.length - added.length} left out, the list is full)` : ''}`;
+    return outcome;
   };
 
   const links = linkField && Array.isArray(answers[linkField.key]) ? answers[linkField.key] : [];
@@ -178,7 +196,7 @@ export default function MusicPlanner({ fields, answers, onChange, disabled = fal
             <label className="music__dest">
               <span>Adding to</span>
               <select value={destination} onChange={(e) => target(e.target.value)}>
-                {fields.map((f) => {
+                {songFields.map((f) => {
                   const n = songsOf(f.key).length;
                   const legacy = isLegacy(f.key);
                   return (

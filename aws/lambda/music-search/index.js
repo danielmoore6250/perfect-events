@@ -250,18 +250,20 @@ const search = async (query, limit) => {
 
 // ---- Shared playlist links ---------------------------------------------------
 
+// Only real playlist links: albums, single tracks and standalone videos are
+// refused, since the point is a list the couple has put together.
 const LINK_PROVIDERS = [
-  { provider: 'spotify', label: 'Spotify', hosts: /(^|\.)spotify\.com$/, isPlaylist: (u) => /^\/(playlist|album)\//.test(u.pathname), oembed: (u) => `https://open.spotify.com/oembed?url=${encodeURIComponent(u.href)}` },
-  { provider: 'apple', label: 'Apple Music', hosts: /(^|\.)music\.apple\.com$/, isPlaylist: (u) => /\/(playlist|album)\//.test(u.pathname), oembed: null },
-  { provider: 'deezer', label: 'Deezer', hosts: /(^|\.)deezer\.com$/, isPlaylist: (u) => /\/(playlist|album)\//.test(u.pathname), oembed: (u) => `${DEEZER_API}/oembed?url=${encodeURIComponent(u.href)}&format=json` },
-  { provider: 'youtube', label: 'YouTube', hosts: /(^|\.)(youtube\.com|youtu\.be)$/, isPlaylist: (u) => u.searchParams.has('list') || /^\/(playlist|watch)/.test(u.pathname) || u.hostname === 'youtu.be', oembed: (u) => `https://www.youtube.com/oembed?url=${encodeURIComponent(u.href)}&format=json` }
+  { provider: 'spotify', label: 'Spotify', hosts: /(^|\.)spotify\.com$/, isPlaylist: (u) => /^\/(?:intl-[a-z]+\/)?playlist\/[A-Za-z0-9]+\/?$/.test(u.pathname), oembed: (u) => `https://open.spotify.com/oembed?url=${encodeURIComponent(u.href)}` },
+  { provider: 'apple', label: 'Apple Music', hosts: /(^|\.)music\.apple\.com$/, isPlaylist: (u) => /\/playlist\/(?:[^/]+\/)?pl\.[A-Za-z0-9._-]+\/?$/.test(u.pathname), oembed: null },
+  { provider: 'deezer', label: 'Deezer', hosts: /(^|\.)deezer\.com$/, isPlaylist: (u) => /\/playlist\/\d+\/?$/.test(u.pathname), oembed: (u) => `${DEEZER_API}/oembed?url=${encodeURIComponent(u.href)}&format=json` },
+  { provider: 'youtube', label: 'YouTube', hosts: /(^|\.)(youtube\.com|music\.youtube\.com)$/, isPlaylist: (u) => /^\/playlist\/?$/.test(u.pathname) && /^[A-Za-z0-9_-]+$/.test(u.searchParams.get('list') || ''), oembed: (u) => `https://www.youtube.com/oembed?url=${encodeURIComponent(u.href)}&format=json` }
 ];
 
 const cleanLink = (u) => {
   // Drop tracking parameters; keep what identifies the playlist.
   const keep = new URL(u.href);
   for (const key of [...keep.searchParams.keys()]) {
-    if (!['list', 'v', 'i'].includes(key)) keep.searchParams.delete(key);
+    if (key !== 'list') keep.searchParams.delete(key);
   }
   keep.hash = '';
   return keep.href;

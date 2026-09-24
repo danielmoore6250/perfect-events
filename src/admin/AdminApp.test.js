@@ -549,3 +549,24 @@ test('the new booking form hides the package for non-weddings and shows server e
   expect(await screen.findByRole('alert')).toHaveTextContent('eventDate must be');
   expect(screen.getByLabelText('Client name')).toHaveValue('X');
 });
+
+test('leaving a booking stops a running preview', async () => {
+  window.HTMLMediaElement.prototype.play = jest.fn().mockResolvedValue();
+  const pause = jest.fn();
+  window.HTMLMediaElement.prototype.pause = pause;
+  store[booking.id] = {
+    ...store[booking.id],
+    planningToken: 'tok_existing_0000000000000000000',
+    planning: { answers: { namedDances: [{ name: 'Father and daughter', song: { source: 'apple', id: '7', title: 'My Girl', artist: 'The Temptations', album: null, artwork: null, previewUrl: 'https://audio-ssl.itunes.apple.com/7.m4a', url: null, durationMs: null } }] }, submittedAt: 'x', updatedAt: 'x' }
+  };
+  render(<AdminApp />);
+  await signIn();
+  fireEvent.click(await screen.findByText('Aoife Murphy'));
+  await screen.findByRole('heading', { name: 'Aoife Murphy' });
+  fireEvent.click(screen.getByRole('button', { name: 'Preview My Girl' }));
+  expect(await screen.findByRole('button', { name: 'Stop preview of My Girl' })).toBeInTheDocument();
+  pause.mockClear();
+  fireEvent.click(screen.getByRole('button', { name: '← All bookings' }));
+  await screen.findByText('Aoife Murphy');
+  expect(pause).toHaveBeenCalled();
+});

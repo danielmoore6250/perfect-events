@@ -16,6 +16,9 @@ const tokenFromPath = () => {
   return match ? match[1] : null;
 };
 
+let uidCounter = 0;
+export const newUid = () => `d${Date.now().toString(36)}-${(uidCounter += 1)}`;
+
 const emptyAnswers = () =>
   Object.fromEntries(PLANNING_FIELDS.map((f) => [f.key, ['songs', 'links', 'dances'].includes(f.type) ? [] : '']));
 
@@ -24,6 +27,11 @@ const knownAnswers = (answers = {}) =>
   Object.fromEntries(PLANNING_FIELDS.filter((f) => answers[f.key] !== undefined && answers[f.key] !== null).map((f) => [f.key, answers[f.key]]));
 
 const sameAnswer = (a, b) => JSON.stringify(a ?? '') === JSON.stringify(b ?? '');
+
+const stripUids = (answers) => ({
+  ...answers,
+  namedDances: Array.isArray(answers.namedDances) ? answers.namedDances.map(({ uid, ...dance }) => dance) : answers.namedDances
+});
 
 const firstName = (name) => (name || '').trim().split(/\s+/)[0] || 'there';
 
@@ -47,14 +55,18 @@ export default function PlanApp() {
     // The guest count starts from the enquiry until the client changes it.
     if (next.guestCount === '' && b.guestCount) next.guestCount = String(b.guestCount);
     // Earlier forms had separate "crowd" and "announcements" boxes; fold any
-    // text from them into the one box so nothing is lost.
+    // text from them into the one box so nothing is lost, whatever is in it.
     const carried = ['musicStyle', 'announcements'].map((k) => (typeof b.answers?.[k] === 'string' ? b.answers[k].trim() : '')).filter(Boolean);
-    if (carried.length && !next.extraNotes) next.extraNotes = carried.join('\n\n');
+    const pieces = [next.extraNotes, ...carried].map((t) => (t || '').trim()).filter(Boolean);
+    next.extraNotes = pieces.filter((t, i) => pieces.indexOf(t) === i).join('\n\n');
+    // Each dance row needs a stable identity on this page so a removal never
+    // hands one dance's search panel to the next.
+    next.namedDances = (Array.isArray(next.namedDances) ? next.namedDances : []).map((d) => ({ ...d, uid: newUid() }));
     // Forms filled in before dances had names stored parent dances as a plain
     // list; carry them over as named dances so nothing is lost.
     const oldParent = b.answers?.parentDances;
     if (Array.isArray(oldParent) && oldParent.length && next.namedDances.length === 0) {
-      next.namedDances = oldParent.map((song) => ({ name: 'Parent dance', song }));
+      next.namedDances = oldParent.map((song) => ({ name: 'Parent dance', song, uid: newUid() }));
     }
     setAnswers(next);
     setSaved(next);
@@ -82,9 +94,11 @@ export default function PlanApp() {
     setJustSaved(false);
     setAnswers((a) => ({ ...a, [key]: e.target.value }));
   };
+  // `value` may be a function of the current value, for updates that must
+  // merge with whatever the client did while a request was in flight.
   const setValue = (key) => (value) => {
     setJustSaved(false);
-    setAnswers((a) => ({ ...a, [key]: value }));
+    setAnswers((a) => ({ ...a, [key]: typeof value === 'function' ? value(a[key]) : value }));
   };
 
   const dirty = saved && Object.keys(answers).some((k) => !sameAnswer(answers[k], saved[k]));
@@ -97,7 +111,7 @@ export default function PlanApp() {
       const res = await fetch(`${API_BASE}/plan/${token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ answers })
+        body: JSON.stringify({ answers: stripUids(answers) })
       });
       const data = await res.json().catch(() => ({}));
       if (res.status === 423) {

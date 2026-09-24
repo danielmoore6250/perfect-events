@@ -7,6 +7,7 @@ import { subscribePreview } from '../shared/preview';
 import { CloseIcon, PlusIcon } from '../shared/icons';
 import { SongRow } from './SongRow';
 import SongFinder from './SongFinder';
+import { newUid } from './PlanApp';
 
 const DANCE_SUGGESTIONS = ['Father and daughter', 'Groom and mother', 'Bridal party', 'Last dance'];
 
@@ -41,7 +42,7 @@ export default function DancePlanner({ firstDanceField, dancesField, answers, on
   const removeDance = (index) => setDances(dances.filter((_, i) => i !== index));
   const addDance = () => {
     if (full) return;
-    setDances([...dances, { name: '', song: null }]);
+    setDances([...dances, { name: '', song: null, uid: newUid() }]);
   };
 
   const switchFromLegacy = () => {
@@ -90,7 +91,7 @@ export default function DancePlanner({ firstDanceField, dancesField, answers, on
           ) : (
             <ol className="dances">
               {dances.map((dance, index) => (
-                <li className="dance" key={index} role="group" aria-label={dance.name ? `Dance: ${dance.name}` : `Dance ${index + 1}`}>
+                <li className="dance" key={dance.uid || index} role="group" aria-label={dance.name ? `Dance: ${dance.name}` : `Dance ${index + 1}`}>
                   <div className="dance__head">
                     <input
                       type="text"
