@@ -318,21 +318,21 @@ test('a locked form is read-only with an explanation and no search', async () =>
 test('a server error on save is shown and the answers are kept', async () => {
   visit(`/plan/${TOKEN}`);
   await screen.findByLabelText('Search for a song');
-  fireEvent.change(screen.getByLabelText('Anything else we should know?'), { target: { value: 'X' } });
+  fireEvent.change(screen.getByLabelText('Anything else we need to know?'), { target: { value: 'X' } });
   global.fetch.mockImplementationOnce(async () => jsonResponse(400, { error: 'djStartTime must be a time like 19:30' }));
   fireEvent.click(screen.getByRole('button', { name: 'Send us your details' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('djStartTime must be a time like 19:30');
-  expect(screen.getByLabelText('Anything else we should know?')).toHaveValue('X');
+  expect(screen.getByLabelText('Anything else we need to know?')).toHaveValue('X');
 });
 
 test('a 423 on save puts the page into the locked state instead of leaving it editable', async () => {
   visit(`/plan/${TOKEN}`);
   await screen.findByLabelText('Search for a song');
-  fireEvent.change(screen.getByLabelText('Anything else we should know?'), { target: { value: 'X' } });
+  fireEvent.change(screen.getByLabelText('Anything else we need to know?'), { target: { value: 'X' } });
   current = { ...current, locked: true };
   fireEvent.click(screen.getByRole('button', { name: 'Send us your details' }));
   expect(await screen.findByRole('alert')).toHaveTextContent(/now locked/);
-  expect(screen.getByLabelText('Anything else we should know?')).toBeDisabled();
+  expect(screen.getByLabelText('Anything else we need to know?')).toBeDisabled();
   expect(screen.queryByRole('button', { name: /Save|Send/ })).not.toBeInTheDocument();
 });
 
@@ -552,4 +552,16 @@ test('parent dances saved before dances had names come back as named dances', as
   const dances = picker('Other dances');
   expect(dances.getByLabelText('Name of dance 1')).toHaveValue('Parent dance');
   expect(dances.getByRole('button', { name: 'Remove My Girl' })).toBeInTheDocument();
+});
+
+test('playlists come before the song search, and the old free-text boxes fold into the one box', async () => {
+  current = view({ answers: { musicStyle: '90s bangers', announcements: 'Cake at 9' }, submittedAt: 'x', updatedAt: 'x' });
+  visit(`/plan/${TOKEN}`);
+  await screen.findByLabelText('Search for a song');
+  const party = screen.getByRole('group', { name: 'Playlists you love' });
+  const finder = screen.getByRole('group', { name: 'Add songs' });
+  expect(party.compareDocumentPosition(finder) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(screen.getByLabelText('Anything else we need to know?')).toHaveValue('90s bangers\n\nCake at 9');
+  expect(screen.queryByLabelText('What gets your crowd going?')).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Anything to announce?')).not.toBeInTheDocument();
 });

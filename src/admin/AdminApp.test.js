@@ -439,7 +439,7 @@ test('the planning card renders picked songs with artwork, an Open link, and cop
   await screen.findByRole('heading', { name: 'Aoife Murphy' });
 
   const lists = screen.getAllByRole('list').filter((l) => l.className.includes('songlist'));
-  expect(lists).toHaveLength(4); // first dance, other dances, must play, playlist links
+  expect(lists).toHaveLength(4); // first dance, other dances, playlist links, must play
 
   const first = within(lists[0]);
   expect(first.getByText('Perfect')).toBeInTheDocument();
@@ -453,7 +453,7 @@ test('the planning card renders picked songs with artwork, an Open link, and cop
   expect(dances.getByText('Groom and mother')).toBeInTheDocument();
   expect(dances.getByText('Song to be confirmed')).toBeInTheDocument();
 
-  const must = within(lists[2]);
+  const must = within(lists[3]);
   expect(must.getByText('Boston')).toBeInTheDocument();
   expect(must.getByText('Our song')).toBeInTheDocument();
   expect(must.getByText('Typed in by the client')).toBeInTheDocument();
@@ -479,6 +479,6 @@ test('the planning card renders picked songs with artwork, an Open link, and cop
   expect(screen.getByRole('link', { name: 'Our wedding vibes' })).toHaveAttribute('href', 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M');
 
   fireEvent.click(screen.getByRole('button', { name: 'Copy song lists as text' }));
-  expect(writeText).toHaveBeenCalledWith('First dance\nEd Sheeran – Perfect\n\nOther dances\nFather and daughter: The Temptations – My Girl\nGroom and mother: song to be confirmed\n\nMust play\nAugustana – Boston\nOur song\n\nDo not play\nCha Cha Slide\n\nPlaylists you love\nOur wedding vibes (Spotify) https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M');
+  expect(writeText).toHaveBeenCalledWith('First dance\nEd Sheeran – Perfect\n\nOther dances\nFather and daughter: The Temptations – My Girl\nGroom and mother: song to be confirmed\n\nPlaylists you love\nOur wedding vibes (Spotify) https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M\n\nMust play\nAugustana – Boston\nOur song\n\nDo not play\nCha Cha Slide');
   expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument();
 });

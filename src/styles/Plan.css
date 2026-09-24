@@ -57,6 +57,7 @@ a.song__title:hover { text-decoration: underline; }
 .music__lists { display: flex; flex-direction: column; }
 .music__list { padding: 14px 0; border-top: 1px solid var(--border); }
 .music__list:first-child { border-top: 0; padding-top: 6px; }
+.music__list--first { border-top: 0; padding-top: 0; padding-bottom: 18px; margin-bottom: 14px; border-bottom: 1px solid var(--border); }
 .music__list-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
 .music__list-title { font-size: 15px; font-weight: 600; margin: 0; }
 .music__add { margin-left: auto; padding: 0; display: inline-flex; align-items: center; gap: 4px; text-decoration: none; color: var(--text); }

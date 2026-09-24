@@ -274,8 +274,10 @@ picked up the timings.
   number then wins in the admin view, email and calendar), set-up access, guest
   arrival (not weddings), meal (weddings and corporate only), speeches (wedding),
   DJ start, finish; first dance and parent dances (wedding), last song, must play, do not
-  play, music style, announcements; venue contact name and phone, access notes;
-  anything else. Each field can carry `eventTypes` to limit which kinds of event
+  play, and one free-text box "Anything else we need to know?" (the earlier
+  music-style, announcements and trailing anything-else boxes are folded into it
+  on load); venue contact name and phone, access notes. Playlist links sit at
+  the top of Party music so a couple with a playlist sees that first. Each field can carry `eventTypes` to limit which kinds of event
   show it. Defined once in `src/shared/format.js` for the UI and once in the
   Lambda for validation. A "play if possible" list existed briefly and was
   removed at Daniel's request.

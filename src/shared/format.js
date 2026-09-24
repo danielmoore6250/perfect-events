@@ -62,14 +62,13 @@ export const PLANNING_SECTIONS = [
   },
   {
     title: 'Party music',
-    hint: 'Search for songs and add them. Anything under "do not play" stays off, no exceptions.',
+    hint: 'Already have a playlist? Paste the link first. Then add the songs that matter most. Anything under "do not play" stays off, no exceptions.',
     fields: [
+      { key: 'playlistLinks', label: 'Playlists you love', type: 'links', max: 10, hint: 'Paste a Spotify, Apple Music, Deezer or YouTube playlist link. We open it in our own account.' },
       { key: 'mustPlay', label: 'Must play', type: 'songs', max: 100, allowImport: true, hint: 'The ones the night is not complete without.' },
       { key: 'doNotPlay', label: 'Do not play', type: 'songs', max: 100, allowImport: true },
       { key: 'lastSong', label: 'Last song of the night', type: 'songs', max: 1 },
-      { key: 'playlistLinks', label: 'Playlists you love', type: 'links', max: 10, hint: 'Paste a Spotify, Apple Music, Deezer or YouTube playlist link. We open it in our own account.' },
-      { key: 'musicStyle', label: 'What gets your crowd going?', type: 'long', placeholder: 'Eras, genres, artists, the vibe you want' },
-      { key: 'announcements', label: 'Anything to announce?', type: 'long', placeholder: 'Cake cutting, toasts, a birthday in the room' }
+      { key: 'extraNotes', label: 'Anything else we need to know?', type: 'long', placeholder: 'The vibe you want, eras and artists you love, cake cutting, toasts, a birthday in the room' }
     ]
   },
   {
@@ -80,10 +79,6 @@ export const PLANNING_SECTIONS = [
       { key: 'venueContactPhone', label: 'Venue contact phone', type: 'short' },
       { key: 'accessNotes', label: 'Parking, load-in, stairs, power', type: 'long' }
     ]
-  },
-  {
-    title: 'Anything else',
-    fields: [{ key: 'extraNotes', label: 'Anything else we should know?', type: 'long' }]
   }
 ];
 

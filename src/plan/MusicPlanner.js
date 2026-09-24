@@ -162,6 +162,41 @@ export default function MusicPlanner({ fields, answers, onChange, disabled = fal
 
   return (
     <div className="music">
+        {linkField && (
+          <section className="music__list music__list--first" role="group" aria-label={linkField.label}>
+            <header className="music__list-head">
+              <h3 className="music__list-title">{linkField.label}</h3>
+              {links.length > 0 && <span className="muted small">{links.length} / {linkField.max}</span>}
+            </header>
+            {links.length > 0 ? (
+              <ul className="songlist">
+                {links.map((link) => (
+                  <PlaylistLinkRow
+                    key={link.url}
+                    link={link}
+                    onImport={disabled ? null : importFromLink}
+                    importing={importingKey === link.url}
+                    action={
+                      !disabled && (
+                        <button type="button" className="song__btn song__remove" onClick={() => removeLink(link)} aria-label={`Remove ${link.title || 'playlist'}`}><CloseIcon /></button>
+                      )
+                    }
+                  />
+                ))}
+              </ul>
+            ) : (
+              <p className="music__empty muted small">{linkField.hint}</p>
+            )}
+            {!disabled && !linksFull && (
+              <div className="music__panel music__panel--link" onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addLink(); } }}>
+                <input type="url" value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} placeholder="Paste a playlist link" aria-label="Playlist link to add" />
+                <button type="button" className="button button--small" onClick={addLink} disabled={addingLink || !linkUrl.trim()}>{addingLink ? 'Adding…' : 'Add playlist'}</button>
+              </div>
+            )}
+            {linkError && <p className="notice notice--error small" role="alert">{linkError}</p>}
+          </section>
+        )}
+
       {!disabled && (
         <div className="music__finder" role="group" aria-label="Add songs">
           <div className="music__bar">
@@ -265,40 +300,6 @@ export default function MusicPlanner({ fields, answers, onChange, disabled = fal
           );
         })}
 
-        {linkField && (
-          <section className="music__list" role="group" aria-label={linkField.label}>
-            <header className="music__list-head">
-              <h3 className="music__list-title">{linkField.label}</h3>
-              {links.length > 0 && <span className="muted small">{links.length} / {linkField.max}</span>}
-            </header>
-            {links.length > 0 ? (
-              <ul className="songlist">
-                {links.map((link) => (
-                  <PlaylistLinkRow
-                    key={link.url}
-                    link={link}
-                    onImport={disabled ? null : importFromLink}
-                    importing={importingKey === link.url}
-                    action={
-                      !disabled && (
-                        <button type="button" className="song__btn song__remove" onClick={() => removeLink(link)} aria-label={`Remove ${link.title || 'playlist'}`}><CloseIcon /></button>
-                      )
-                    }
-                  />
-                ))}
-              </ul>
-            ) : (
-              <p className="music__empty muted small">{linkField.hint}</p>
-            )}
-            {!disabled && !linksFull && (
-              <div className="music__panel music__panel--link" onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addLink(); } }}>
-                <input type="url" value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} placeholder="Paste a playlist link" aria-label="Playlist link to add" />
-                <button type="button" className="button button--small" onClick={addLink} disabled={addingLink || !linkUrl.trim()}>{addingLink ? 'Adding…' : 'Add playlist'}</button>
-              </div>
-            )}
-            {linkError && <p className="notice notice--error small" role="alert">{linkError}</p>}
-          </section>
-        )}
       </div>
     </div>
   );

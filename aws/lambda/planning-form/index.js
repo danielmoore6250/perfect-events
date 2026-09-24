@@ -433,7 +433,7 @@ const FIELD_LABELS = {
   venueContactName: 'Venue contact',
   venueContactPhone: 'Venue phone',
   accessNotes: 'Access notes',
-  extraNotes: 'Anything else'
+  extraNotes: 'Anything else we need to know'
 };
 
 const notifyBusiness = async (booking, firstSubmission) => {

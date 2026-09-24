@@ -45,6 +45,10 @@ export default function PlanApp() {
     const next = { ...emptyAnswers(), ...knownAnswers(b.answers) };
     // The guest count starts from the enquiry until the client changes it.
     if (next.guestCount === '' && b.guestCount) next.guestCount = String(b.guestCount);
+    // Earlier forms had separate "crowd" and "announcements" boxes; fold any
+    // text from them into the one box so nothing is lost.
+    const carried = ['musicStyle', 'announcements'].map((k) => (typeof b.answers?.[k] === 'string' ? b.answers[k].trim() : '')).filter(Boolean);
+    if (carried.length && !next.extraNotes) next.extraNotes = carried.join('\n\n');
     // Forms filled in before dances had names stored parent dances as a plain
     // list; carry them over as named dances so nothing is lost.
     const oldParent = b.answers?.parentDances;
