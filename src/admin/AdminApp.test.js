@@ -96,6 +96,22 @@ beforeEach(() => {
       if (init.headers.Authorization !== 'Bearer id-token' && init.headers.Authorization !== 'Bearer id-token-2') {
         return jsonResponse(401, { message: 'Unauthorized' });
       }
+      if (method === 'POST' && url === `${API_BASE}/admin/bookings`) {
+        if (!body.name) return jsonResponse(400, { error: 'A client name is required' });
+        const created = {
+          id: 'new-0000-0000', recordType: 'booking', source: 'admin', status: body.status || 'booked',
+          createdAt: '2026-09-24T20:00:00.000Z', updatedAt: '2026-09-24T20:00:00.000Z',
+          eventDate: body.eventDate || 'unknown',
+          client: { name: body.name, email: body.email || '', phone: body.phone || '' },
+          event: { type: body.eventType || null, weddingPackage: body.weddingPackage || null, venue: body.venue || null, guestCount: body.guestCount || null },
+          pricing: body.pricing ? { quote: Number(body.pricing.quote), deposit: body.pricing.deposit ? Number(body.pricing.deposit) : null, depositPaidOn: body.pricing.depositPaidOn || null, balancePaidOn: null } : undefined,
+          notes: body.notes || null,
+          statusHistory: [{ status: body.status || 'booked', at: '2026-09-24T20:00:00.000Z', by: 'admin@example.com' }],
+          planningToken: 'tok_created_00000000000000000000'
+        };
+        store[created.id] = created;
+        return jsonResponse(201, { booking: created });
+      }
       if (method === 'POST' && url.endsWith('/planning-link')) {
         const id = decodeURIComponent(url.slice(`${API_BASE}/admin/bookings/`.length, -'/planning-link'.length));
         const current = store[id];
@@ -481,4 +497,55 @@ test('the planning card renders picked songs with artwork, an Open link, and cop
   fireEvent.click(screen.getByRole('button', { name: 'Copy song lists as text' }));
   expect(writeText).toHaveBeenCalledWith('First dance\nEd Sheeran – Perfect\n\nOther dances\nFather and daughter: The Temptations – My Girl\nGroom and mother: song to be confirmed\n\nPlaylists you love\nOur wedding vibes (Spotify) https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M\n\nMust play\nAugustana – Boston\nOur song\n\nDo not play\nCha Cha Slide');
   expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument();
+});
+
+test('the admin can create a booking by hand and lands on its page with a planning link ready', async () => {
+  render(<AdminApp />);
+  await signIn();
+  await screen.findByText('Aoife Murphy');
+  fireEvent.click(screen.getByRole('button', { name: 'New booking' }));
+
+  expect(await screen.findByRole('heading', { name: 'New booking' })).toBeInTheDocument();
+  expect(window.location.pathname).toBe('/admin/new');
+  const create = screen.getByRole('button', { name: 'Create booking' });
+  expect(create).toBeDisabled();
+
+  fireEvent.change(screen.getByLabelText('Client name'), { target: { value: 'Ciara & Tom' } });
+  fireEvent.change(screen.getByLabelText('Phone'), { target: { value: '07700 900999' } });
+  fireEvent.change(screen.getByLabelText('Package'), { target: { value: 'after-band' } });
+  fireEvent.change(screen.getByLabelText(/^Event date/), { target: { value: '2027-08-14' } });
+  fireEvent.change(screen.getByLabelText('Venue'), { target: { value: 'Clandeboye Lodge' } });
+  fireEvent.change(screen.getByLabelText('Guests'), { target: { value: '180' } });
+  fireEvent.change(screen.getByLabelText('Quote (£)'), { target: { value: '1100' } });
+  fireEvent.change(screen.getByLabelText('Deposit (£)'), { target: { value: '300' } });
+  fireEvent.change(screen.getByLabelText('Notes'), { target: { value: 'Booked over the phone' } });
+  expect(create).toBeEnabled();
+  fireEvent.click(create);
+
+  expect(await screen.findByRole('heading', { name: 'Ciara & Tom' })).toBeInTheDocument();
+  expect(window.location.pathname).toBe('/admin/new-0000-0000');
+  expect(screen.getByText(`${window.location.origin}/plan/tok_created_00000000000000000000`)).toBeInTheDocument();
+
+  const post = requests.find((r) => r.method === 'POST' && r.url === `${API_BASE}/admin/bookings`);
+  expect(post.body).toEqual({
+    name: 'Ciara & Tom', email: '', phone: '07700 900999', eventType: 'wedding', weddingPackage: 'after-band',
+    eventDate: '2027-08-14', venue: 'Clandeboye Lodge', guestCount: '180', status: 'booked', notes: 'Booked over the phone',
+    pricing: { quote: '1100', deposit: '300', depositPaidOn: null, balancePaidOn: null }
+  });
+});
+
+test('the new booking form hides the package for non-weddings and shows server errors', async () => {
+  window.history.replaceState(null, '', '/admin/new');
+  render(<AdminApp />);
+  await signIn();
+  await screen.findByRole('heading', { name: 'New booking' });
+  expect(screen.getByLabelText('Package')).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Event type'), { target: { value: 'corporate' } });
+  expect(screen.queryByLabelText('Package')).not.toBeInTheDocument();
+
+  fireEvent.change(screen.getByLabelText('Client name'), { target: { value: 'X' } });
+  global.fetch.mockImplementationOnce(async () => jsonResponse(400, { error: 'eventDate must be YYYY-MM-DD or "unknown"' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Create booking' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('eventDate must be');
+  expect(screen.getByLabelText('Client name')).toHaveValue('X');
 });

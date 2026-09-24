@@ -235,6 +235,16 @@ to Booked, and parsed cleanly with ical.js.
 
 Tests: 16 for the calendar Lambda, 25 for the admin Lambda, 13 React cases.
 
+### Bookings by hand
+
+Not every booking starts on the website. "New booking" in the admin toolbar
+opens `/admin/new`: client name (the only required field), stage (default
+Booked), contact details, event type and package, date, venue, guests, quote,
+deposit and notes. `POST /admin/bookings` creates the record with
+`source: 'admin'`, a history entry by the admin's email, and, at Booked or
+later, a planning link ready to send. The Lambda's IAM gains `PutItem` with a
+condition that the id does not already exist.
+
 ### To deploy and try
 
 1. Merge the PR, run the Deploy workflow.

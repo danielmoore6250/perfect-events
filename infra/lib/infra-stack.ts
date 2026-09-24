@@ -218,9 +218,9 @@ export class InfraStack extends cdk.Stack {
       },
     });
 
-    // Read and update only — the admin screen never deletes a booking.
+    // Read, update and create — the admin screen never deletes a booking.
     adminBookingsFn.addToRolePolicy(new iam.PolicyStatement({
-      actions: ['dynamodb:GetItem', 'dynamodb:UpdateItem'],
+      actions: ['dynamodb:GetItem', 'dynamodb:UpdateItem', 'dynamodb:PutItem'],
       resources: [bookingsTable.tableArn],
     }));
     adminBookingsFn.addToRolePolicy(new iam.PolicyStatement({
@@ -338,7 +338,7 @@ export class InfraStack extends cdk.Stack {
 
     httpApi.addRoutes({
       path: '/admin/bookings',
-      methods: [apigatewayv2.HttpMethod.GET],
+      methods: [apigatewayv2.HttpMethod.GET, apigatewayv2.HttpMethod.POST],
       integration: adminIntegration,
       authorizer: adminAuthorizer,
     });

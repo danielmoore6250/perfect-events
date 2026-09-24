@@ -248,3 +248,6 @@
 }
 .songlist--admin .song__play--on { background: var(--white); color: #0a0a0b; border-color: var(--white); }
 .songlist--admin .song__art--blank { color: var(--text-dim); }
+
+.detail__form--wide { position: static; max-width: 720px; }
+.toolbar .button--primary { margin-right: 4px; }

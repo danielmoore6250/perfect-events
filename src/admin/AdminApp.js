@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import '../styles/Admin.css';
 import { getSession, signIn, completeNewPassword, forgotPassword, confirmForgotPassword, clearSession } from './auth';
-import { listBookings, getBooking, updateBooking, getCalendarLink, rotateCalendarLink, calendarFeedUrl, createPlanningLink, planningFormUrl } from './api';
+import { listBookings, getBooking, updateBooking, getCalendarLink, rotateCalendarLink, calendarFeedUrl, createPlanningLink, planningFormUrl, createBooking } from './api';
 import { EVENT_TYPE_LABELS, WEDDING_PACKAGE_LABELS, labelFor, formatEventDate, formatDateTime, PLANNING_SECTIONS, PLANNING_FIELD_LABELS, fieldApplies, answersToSetlistText } from '../shared/format';
 import { PlaylistLinkRow } from '../plan/MusicPlanner';
 import { PreviewButton, SongArt } from '../plan/SongRow';
@@ -39,6 +39,7 @@ const reference = (id) => (id || '').slice(0, 8).toUpperCase();
 // ---- Tiny router: /admin, /admin/calendar and /admin/<booking id> ----------
 
 const CALENDAR_ROUTE = 'calendar';
+const NEW_ROUTE = 'new';
 
 const routeFromPath = () => {
   const match = window.location.pathname.match(/^\/admin\/([^/]+)\/?$/);
@@ -207,7 +208,7 @@ function Login({ onSignedIn }) {
   );
 }
 
-function BookingList({ onOpen, onAuthLost }) {
+function BookingList({ onOpen, onNew, onAuthLost }) {
   const [bookings, setBookings] = useState(null);
   const [error, setError] = useState('');
   const [stage, setStage] = useState('active');
@@ -244,6 +245,7 @@ function BookingList({ onOpen, onAuthLost }) {
   return (
     <section>
       <div className="toolbar">
+        <button type="button" className="button button--primary" onClick={onNew}>New booking</button>
         <div className="toolbar__filters">
           <label className="field field--inline">
             <span>Stage</span>
@@ -730,6 +732,155 @@ function BookingDetail({ id, onBack, onAuthLost }) {
   );
 }
 
+// Bookings that did not come through the website: taken on the phone, by
+// email, or already in the diary before this system existed.
+const EMPTY_NEW_BOOKING = {
+  name: '', email: '', phone: '', eventType: 'wedding', weddingPackage: 'full-night',
+  eventDate: '', venue: '', guestCount: '', status: 'booked', quote: '', deposit: '', depositPaidOn: '', notes: ''
+};
+
+function NewBookingPage({ onCreated, onBack, onAuthLost }) {
+  const [form, setForm] = useState(EMPTY_NEW_BOOKING);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setBusy(true);
+    try {
+      const pricing = form.quote || form.deposit || form.depositPaidOn
+        ? { quote: form.quote || null, deposit: form.deposit || null, depositPaidOn: form.depositPaidOn || null, balancePaidOn: null }
+        : undefined;
+      const booking = await createBooking({
+        name: form.name,
+        email: form.email,
+        phone: form.phone,
+        eventType: form.eventType,
+        weddingPackage: form.eventType === 'wedding' ? form.weddingPackage : undefined,
+        eventDate: form.eventDate || 'unknown',
+        venue: form.venue,
+        guestCount: form.guestCount,
+        status: form.status,
+        notes: form.notes,
+        ...(pricing ? { pricing } : {})
+      });
+      onCreated(booking.id);
+    } catch (err) {
+      if (err.status === 401) return onAuthLost();
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section>
+      <button type="button" className="button button--link" onClick={onBack}>← All bookings</button>
+      <div className="detail__head">
+        <div>
+          <h1 className="detail__title">New booking</h1>
+          <p className="detail__date">For an event that did not come through the website. Only the name is required.</p>
+        </div>
+      </div>
+
+      <form className="card detail__form detail__form--wide" onSubmit={submit}>
+        <div className="field-row">
+          <label className="field">
+            <span>Client name</span>
+            <input type="text" value={form.name} onChange={set('name')} required autoFocus maxLength={200} />
+          </label>
+          <label className="field">
+            <span>Stage</span>
+            <select value={form.status} onChange={set('status')}>
+              {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+          </label>
+        </div>
+
+        <div className="field-row">
+          <label className="field">
+            <span>Email</span>
+            <input type="email" value={form.email} onChange={set('email')} maxLength={200} />
+          </label>
+          <label className="field">
+            <span>Phone</span>
+            <input type="tel" value={form.phone} onChange={set('phone')} maxLength={40} />
+          </label>
+        </div>
+
+        <div className="field-row">
+          <label className="field">
+            <span>Event type</span>
+            <select value={form.eventType} onChange={set('eventType')}>
+              {Object.entries(EVENT_TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+          {form.eventType === 'wedding' ? (
+            <label className="field">
+              <span>Package</span>
+              <select value={form.weddingPackage} onChange={set('weddingPackage')}>
+                {Object.entries(WEDDING_PACKAGE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </label>
+          ) : (
+            <span />
+          )}
+        </div>
+
+        <div className="field-row">
+          <label className="field">
+            <span>Event date</span>
+            <input type="date" value={form.eventDate} onChange={set('eventDate')} />
+            <small className="muted">Leave empty if still to be confirmed.</small>
+          </label>
+          <label className="field">
+            <span>Guests</span>
+            <input type="number" min="1" max="5000" step="1" inputMode="numeric" value={form.guestCount} onChange={set('guestCount')} />
+          </label>
+        </div>
+
+        <label className="field">
+          <span>Venue</span>
+          <input type="text" value={form.venue} onChange={set('venue')} maxLength={200} />
+        </label>
+
+        <div className="field-row">
+          <label className="field">
+            <span>Quote (£)</span>
+            <input type="number" min="0" step="0.01" inputMode="decimal" value={form.quote} onChange={set('quote')} />
+          </label>
+          <label className="field">
+            <span>Deposit (£)</span>
+            <input type="number" min="0" step="0.01" inputMode="decimal" value={form.deposit} onChange={set('deposit')} />
+          </label>
+        </div>
+        <label className="field">
+          <span>Deposit paid on</span>
+          <input type="date" value={form.depositPaidOn} onChange={set('depositPaidOn')} />
+        </label>
+
+        <label className="field">
+          <span>Notes</span>
+          <textarea rows={4} value={form.notes} onChange={set('notes')} placeholder="How it was booked, anything agreed" />
+        </label>
+
+        {error && <p className="notice notice--error" role="alert">{error}</p>}
+
+        <div className="detail__actions">
+          <button type="submit" className="button button--primary" disabled={busy || !form.name.trim()}>
+            {busy ? 'Creating…' : 'Create booking'}
+          </button>
+          <button type="button" className="button button--link" onClick={onBack}>Cancel</button>
+        </div>
+        <p className="muted small">A booking at Booked or later gets its client planning link straight away.</p>
+      </form>
+    </section>
+  );
+}
+
 function CalendarPage({ onBack, onAuthLost }) {
   const [calendar, setCalendar] = useState(null);
   const [error, setError] = useState('');
@@ -856,10 +1007,12 @@ export default function AdminApp() {
       <main className="admin__main">
         {route === CALENDAR_ROUTE ? (
           <CalendarPage onBack={() => navigate(null)} onAuthLost={signOut} />
+        ) : route === NEW_ROUTE ? (
+          <NewBookingPage onCreated={(id) => navigate(id)} onBack={() => navigate(null)} onAuthLost={signOut} />
         ) : route ? (
           <BookingDetail id={route} onBack={() => navigate(null)} onAuthLost={signOut} />
         ) : (
-          <BookingList onOpen={navigate} onAuthLost={signOut} />
+          <BookingList onOpen={navigate} onNew={() => navigate(NEW_ROUTE)} onAuthLost={signOut} />
         )}
       </main>
     </div>
