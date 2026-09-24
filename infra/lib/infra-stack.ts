@@ -377,6 +377,8 @@ export class InfraStack extends cdk.Stack {
     const musicIntegration = new integrations.HttpLambdaIntegration('MusicSearchIntegration', musicSearchFn);
     httpApi.addRoutes({ path: '/music/search', methods: [apigatewayv2.HttpMethod.GET], integration: musicIntegration });
     httpApi.addRoutes({ path: '/music/playlist', methods: [apigatewayv2.HttpMethod.GET], integration: musicIntegration });
+    // 302 to a fresh preview link; stored ones expire (see the Lambda).
+    httpApi.addRoutes({ path: '/music/preview', methods: [apigatewayv2.HttpMethod.GET], integration: musicIntegration });
 
     // Stage-wide throttle. Per-route settings were tried first and bit twice:
     // CloudFormation applies the stage before new routes exist, and a rollback

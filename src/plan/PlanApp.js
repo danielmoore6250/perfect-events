@@ -7,7 +7,7 @@ import '../styles/Plan.css';
 import { API_BASE } from '../config';
 import { PLANNING_SECTIONS, WEDDING_PACKAGE_LABELS, formatDateTime } from '../shared/format';
 import SongPicker from './SongPicker';
-import { stopPreview } from './preview';
+import { stopPreview } from '../shared/preview';
 
 const tokenFromPath = () => {
   const match = window.location.pathname.match(/^\/plan\/([A-Za-z0-9_-]+)\/?$/);

@@ -333,16 +333,25 @@ shows it as a textarea with a "Use song search instead" switch.
 - The notification email and the calendar description render songs as
   "Artist – Title".
 
+### Previews
+
+Deezer signs its preview links and they expire about 15 minutes after a search,
+so a link saved with a booking is dead by the time anyone presses play. Nothing
+plays a stored link: the player streams from `GET /music/preview?source=&id=`,
+which looks the track up again (cached 5 minutes) and 302s to a current link.
+The `previewUrl` on a saved song is only a flag that a preview exists. The admin
+card has play buttons too.
+
 ### Abuse limits
 
-The music routes are public, so three layers bound what a flood can cost: per-route
-throttling on the API stage (search 10/s burst 20, playlist import 1/s burst 3,
-with the enquiry and planning routes throttled too), reserved concurrency of 5 on
-the music Lambda, and a per-address counter inside it (60 searches and 10 imports
-per minute per container, 429 beyond that). Sized for a handful of clients
-planning at once, not for a public product.
+The music routes are public, so three layers bound what a flood can cost: a
+stage-wide throttle on the API (20 requests/s, burst 40, across every route;
+per-route settings were tried and broke two deploys, see PR #7), reserved
+concurrency of 5 on the music Lambda, and a per-address counter inside it (60
+searches or previews and 10 imports per minute per container, 429 beyond that).
+Sized for a handful of clients planning at once, not for a public product.
 
-Tests: 14 music-search Lambda, 21 planning Lambda, 17 calendar, 16 React cases
+Tests: 17 music-search Lambda, 21 planning Lambda, 17 calendar, 18 React cases
 for the planning page and picker, 16 for the admin screen.
 
 ## Phase 5 — reminders and files

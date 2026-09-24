@@ -242,3 +242,8 @@
 .songlist--admin .song__title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .songlist--admin .song__artist { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .button--small { padding: 7px 12px; font-size: 13px; flex: none; text-decoration: none; }
+.songlist--admin .song__play {
+  flex: none; width: 34px; height: 34px; border-radius: 999px; border: 1px solid var(--border-strong);
+  background: transparent; color: var(--text); cursor: pointer; font-size: 13px; line-height: 1;
+}
+.songlist--admin .song__play--on { background: var(--white); color: #0a0a0b; border-color: var(--white); }

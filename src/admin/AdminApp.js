@@ -6,6 +6,8 @@ import '../styles/Admin.css';
 import { getSession, signIn, completeNewPassword, forgotPassword, confirmForgotPassword, clearSession } from './auth';
 import { listBookings, getBooking, updateBooking, getCalendarLink, rotateCalendarLink, calendarFeedUrl, createPlanningLink, planningFormUrl } from './api';
 import { EVENT_TYPE_LABELS, WEDDING_PACKAGE_LABELS, labelFor, formatEventDate, formatDateTime, PLANNING_SECTIONS, PLANNING_FIELD_LABELS, answersToSetlistText } from '../shared/format';
+import { PreviewButton } from '../plan/SongPicker';
+import { subscribePreview, stopPreview } from '../shared/preview';
 
 const STATUSES = [
   { value: 'enquiry', label: 'Enquiry' },
@@ -361,6 +363,10 @@ const changesBetween = (original, form) => {
 // A song list on the admin side: artwork, title, artist, link. Legacy text
 // from before the picker shows as it was typed.
 function SongAnswer({ value }) {
+  const [playing, setPlaying] = useState(null);
+  useEffect(() => subscribePreview(setPlaying), []);
+  useEffect(() => () => stopPreview(), []);
+
   if (typeof value === 'string') return <dd className="prewrap">{value}</dd>;
   return (
     <dd>
@@ -372,6 +378,7 @@ function SongAnswer({ value }) {
               <span className="song__title">{song.title}</span>
               <span className="song__artist muted small">{song.artist || (song.source === 'manual' ? 'Typed in by the client' : '')}</span>
             </span>
+            <PreviewButton song={song} playing={playing} />
             {song.url && <a className="button button--small" href={song.url} target="_blank" rel="noreferrer">Open</a>}
           </li>
         ))}
