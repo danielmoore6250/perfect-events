@@ -60,7 +60,8 @@ beforeEach(() => {
     if (command instanceof UpdateCommand) {
       const item = store[command.input.Key.id];
       const values = command.input.ExpressionAttributeValues;
-      if (!item || item.planningToken !== values[':token']) {
+      const requiresNoPlanning = command.input.ConditionExpression.includes('attribute_not_exists(#planning)');
+      if (!item || item.planningToken !== values[':token'] || (requiresNoPlanning && item.planning)) {
         const err = new Error('The conditional request failed');
         err.name = 'ConditionalCheckFailedException';
         throw err;
@@ -168,7 +169,7 @@ test('first POST saves answers, moves booked to details-received, and emails the
   assert.equal(saved.planning.submittedAt, saved.planning.updatedAt);
 
   const [update] = updates();
-  assert.equal(update.input.ConditionExpression, 'attribute_exists(id) AND #planningToken = :token');
+  assert.equal(update.input.ConditionExpression, 'attribute_exists(id) AND #planningToken = :token AND attribute_not_exists(#planning)');
 
   assert.equal(emails.length, 1);
   const email = emails[0];
@@ -223,6 +224,10 @@ test('POST validation rejects bad input with 400 and saves nothing', async () =>
     [{}, /answers must be an object/],
     [{ answers: [] }, /answers must be an object/],
     [{ answers: { favouriteColour: 'blue' } }, /Unknown field/],
+    [{ answers: { constructor: 'x' } }, /Unknown field/],
+    [{ answers: { toString: 'x' } }, /Unknown field/],
+    [{ answers: { hasOwnProperty: 'x' } }, /Unknown field/],
+    [JSON.parse('{"answers":{"__proto__":{"polluted":true}}}'), /Unknown field/],
     [{ answers: { firstDance: 42 } }, /must be text/],
     [{ answers: { djStartTime: '7pm' } }, /time like 19:30/],
     [{ answers: { djStartTime: '25:00' } }, /time like 19:30/],
@@ -273,16 +278,61 @@ test('the form locks three days before the event and stays locked afterwards', a
   assert.equal(updates().length, 0);
 });
 
+test('the lock uses the business timezone, not UTC', async () => {
+  const { isLocked } = loadModule();
+  // 23:30 UTC on 9 June is 00:30 BST on 10 June in London: 3 days before the 13th, so locked.
+  const lateEvening = new Date('2027-06-09T23:30:00Z');
+  assert.equal(isLocked('2027-06-13', lateEvening), true);
+  // In winter London is on UTC, so the same clock time is still the 9th: 4 days out, open.
+  const winter = new Date('2027-01-09T23:30:00Z');
+  assert.equal(isLocked('2027-01-13', winter), false);
+});
+
+test('two simultaneous first submissions advance the stage and email "received" only once', async () => {
+  const { handler } = loadModule();
+  // Both requests read the booking before either has written.
+  const snapshot = booking();
+  let reads = 0;
+  const original = DynamoDBDocumentClient.prototype.send;
+  mock.method(DynamoDBDocumentClient.prototype, 'send', async function (command) {
+    if (command instanceof QueryCommand) {
+      reads += 1;
+      // The first two reads (one per request) see the pre-write snapshot; later re-reads see the store.
+      return { Items: reads <= 2 ? [snapshot] : Object.values(store).filter((b) => b.planningToken === TOKEN) };
+    }
+    return original.call(this, command);
+  });
+
+  const [a, b] = await Promise.all([
+    handler(request('POST', TOKEN, { answers: { firstDance: 'A' } })),
+    handler(request('POST', TOKEN, { answers: { firstDance: 'B' } }))
+  ]);
+  assert.equal(a.statusCode, 200);
+  assert.equal(b.statusCode, 200);
+
+  const saved = store['abc-123'];
+  assert.equal(saved.status, 'details-received');
+  assert.equal(saved.statusHistory.filter((h) => h.status === 'details-received').length, 1, 'one history entry');
+  assert.equal(emails.filter((e) => e.Content.Simple.Subject.Data.startsWith('Planning details received')).length, 1, 'one "received" email');
+  assert.equal(emails.filter((e) => e.Content.Simple.Subject.Data.startsWith('Planning details updated')).length, 1, 'the loser is an update');
+});
+
 test('a save after the link was regenerated is a 404, not an overwrite', async () => {
   const { handler } = loadModule();
   const original = DynamoDBDocumentClient.prototype.send;
+  let reads = 0;
   mock.method(DynamoDBDocumentClient.prototype, 'send', async function (command) {
-    if (command instanceof QueryCommand) return { Items: [booking()] };
+    if (command instanceof QueryCommand) {
+      reads += 1;
+      // First read sees the old token; the admin regenerates before the write; the retry's read finds nothing.
+      return { Items: reads === 1 ? [booking()] : [] };
+    }
     store['abc-123'].planningToken = 'rotated_token_000000000000000';
     return original.call(this, command);
   });
   const res = await handler(request('POST', TOKEN, { answers: { lastSong: 'X' } }));
   assert.equal(res.statusCode, 404);
+  assert.equal(store['abc-123'].planning, undefined, 'nothing was written');
 });
 
 test('an email failure does not fail the save', async () => {

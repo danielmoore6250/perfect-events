@@ -138,3 +138,17 @@ test('a server error on save is shown and the answers are kept', async () => {
   expect(await screen.findByRole('alert')).toHaveTextContent('djStartTime must be a time like 19:30');
   expect(screen.getByLabelText('First dance')).toHaveValue('X');
 });
+
+test('a 423 on save puts the page into the locked state instead of leaving it editable', async () => {
+  visit(`/plan/${TOKEN}`);
+  await screen.findByLabelText('First dance');
+  fireEvent.change(screen.getByLabelText('First dance'), { target: { value: 'X' } });
+
+  // The event crossed the three-day boundary between loading and saving.
+  current = { ...current, locked: true };
+  fireEvent.click(screen.getByRole('button', { name: 'Send us your details' }));
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(/now locked/);
+  expect(screen.getByLabelText('First dance')).toBeDisabled();
+  expect(screen.queryByRole('button', { name: /Save|Send/ })).not.toBeInTheDocument();
+});

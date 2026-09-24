@@ -74,6 +74,13 @@ export default function PlanApp() {
         body: JSON.stringify({ answers })
       });
       const data = await res.json().catch(() => ({}));
+      if (res.status === 423) {
+        // The event crossed the lock boundary since the page loaded: go read-only
+        // exactly as a fresh visit would, rather than leaving an editable form.
+        setBooking((b) => ({ ...b, locked: true }));
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
       if (!res.ok) throw new Error(data.error || 'Could not save. Please try again.');
       apply(data.booking);
       setJustSaved(true);

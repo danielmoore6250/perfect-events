@@ -88,8 +88,10 @@ const parseAnswers = (body) => {
 
   const clean = {};
   for (const key of Object.keys(answers)) {
+    // Own-property check: names like "constructor" or "__proto__" would
+    // otherwise resolve to something truthy on a plain object.
+    if (!Object.hasOwn(FIELDS, key)) throw new HttpError(400, `Unknown field: ${key}`);
     const spec = FIELDS[key];
-    if (!spec) throw new HttpError(400, `Unknown field: ${key}`);
 
     const raw = answers[key];
     if (raw === null || raw === undefined) continue;
@@ -117,13 +119,26 @@ const isIsoDate = (value) => {
   return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
 };
 
+// Today's calendar date where the business is, not UTC: during British Summer
+// Time the two differ for an hour every night.
+const BUSINESS_TIMEZONE = 'Europe/London';
+const todayInBusinessTimezone = (now) => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: BUSINESS_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(now);
+  const get = (type) => Number(parts.find((p) => p.type === type).value);
+  return Date.UTC(get('year'), get('month') - 1, get('day'));
+};
+
 // Locked when the event is LOCK_DAYS_BEFORE days away or closer, and after it.
 const isLocked = (eventDate, now = new Date()) => {
   if (!isIsoDate(eventDate)) return false;
   const [y, m, d] = eventDate.split('-').map(Number);
   const event = Date.UTC(y, m - 1, d);
-  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  const daysUntil = Math.round((event - today) / 86400000);
+  const daysUntil = Math.round((event - todayInBusinessTimezone(now)) / 86400000);
   return daysUntil <= LOCK_DAYS_BEFORE;
 };
 
@@ -199,14 +214,19 @@ const saveAnswers = async (booking, answers) => {
     sets.push('#statusHistory = list_append(if_not_exists(#statusHistory, :empty), :entry)');
   }
 
+  // If the link was regenerated between the client loading and saving, the
+  // save must not land on a token they no longer hold. On a first submission
+  // the record must still have no planning, so two simultaneous first saves
+  // cannot both advance the stage and email twice; the loser retries as an edit.
+  const conditions = ['attribute_exists(id)', '#planningToken = :token'];
+  if (firstSubmission) conditions.push('attribute_not_exists(#planning)');
+
   const { Attributes } = await docClient.send(
     new UpdateCommand({
       TableName: BOOKINGS_TABLE,
       Key: { id: booking.id },
       UpdateExpression: `SET ${sets.join(', ')}`,
-      // If the link was regenerated between the client loading and saving,
-      // the save must not land on a token they no longer hold.
-      ConditionExpression: 'attribute_exists(id) AND #planningToken = :token',
+      ConditionExpression: conditions.join(' AND '),
       ExpressionAttributeNames: names,
       ExpressionAttributeValues: values,
       ReturnValues: 'ALL_NEW'
@@ -316,8 +336,16 @@ exports.handler = async (event) => {
       try {
         saved = await saveAnswers(booking, answers);
       } catch (err) {
-        if (err.name === 'ConditionalCheckFailedException') throw new HttpError(404, 'Not found');
-        throw err;
+        if (err.name !== 'ConditionalCheckFailedException') throw err;
+        // Either the token changed (404 below) or another save landed first on
+        // a first submission. Re-read and try once more as an ordinary edit.
+        const fresh = await findByToken(token);
+        try {
+          saved = await saveAnswers(fresh, answers);
+        } catch (retryErr) {
+          if (retryErr.name === 'ConditionalCheckFailedException') throw new HttpError(404, 'Not found');
+          throw retryErr;
+        }
       }
 
       try {

@@ -279,7 +279,7 @@ Branch `bookings-phase-4`.
   event's description. Events stay all-day, which reads best in a day view.
 - `robots.txt` disallows `/plan`.
 
-Tests: 15 planning Lambda, 29 admin Lambda, 17 calendar Lambda, 8 React cases for
+Tests: 17 planning Lambda, 29 admin Lambda, 17 calendar Lambda, 9 React cases for
 the planning page (`src/plan/PlanApp.test.js`) and 15 for the admin screen.
 
 ### To deploy and try
