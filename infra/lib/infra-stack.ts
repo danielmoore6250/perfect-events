@@ -279,6 +279,26 @@ export class InfraStack extends cdk.Stack {
       resources: ['*'],
     }));
 
+    // ---- Song search Lambda ---------------------------------------------
+    // Public: searches Apple Music (key from Parameter Store, see
+    // DEPLOYMENT.md) with Deezer as the no-key fallback. Reads nothing else.
+    const appleMusicParamPrefix = '/perfect-events/apple-music';
+    const musicSearchFn = new lambda.Function(this, 'MusicSearchFunction', {
+      functionName: 'perfect-events-music-search',
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: 'index.handler',
+      code: nodeLambdaCode('music-search'),
+      timeout: cdk.Duration.seconds(15),
+      memorySize: 256,
+      environment: {
+        APPLE_MUSIC_PARAM_PREFIX: appleMusicParamPrefix,
+      },
+    });
+    musicSearchFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['ssm:GetParameters'],
+      resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter${appleMusicParamPrefix}/*`],
+    }));
+
     // HTTP API Gateway
     const httpApi = new apigatewayv2.HttpApi(this, 'HttpApi', {
       apiName: 'perfect-events-api',
@@ -347,6 +367,12 @@ export class InfraStack extends cdk.Stack {
       integration: adminIntegration,
       authorizer: adminAuthorizer,
     });
+
+    // Song search and playlist import for the planning form. Public, read-only,
+    // and API Gateway's default throttling is the rate limit.
+    const musicIntegration = new integrations.HttpLambdaIntegration('MusicSearchIntegration', musicSearchFn);
+    httpApi.addRoutes({ path: '/music/search', methods: [apigatewayv2.HttpMethod.GET], integration: musicIntegration });
+    httpApi.addRoutes({ path: '/music/playlist', methods: [apigatewayv2.HttpMethod.GET], integration: musicIntegration });
 
     // The client planning form: <api>/plan/<token>. Token is the credential.
     httpApi.addRoutes({

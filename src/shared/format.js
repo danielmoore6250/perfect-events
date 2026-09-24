@@ -36,6 +36,8 @@ export const formatDateTime = (iso) => {
 
 // The planning form's fields, in the order they are shown. Kept in step with
 // FIELDS in aws/lambda/planning-form/index.js, which is what validates them.
+// `songs` fields hold a list of picked song records (or, for forms filled in
+// before the picker existed, plain text).
 export const PLANNING_SECTIONS = [
   {
     title: 'Timings',
@@ -43,7 +45,7 @@ export const PLANNING_SECTIONS = [
     fields: [
       { key: 'setupAccessTime', label: 'When can we get in to set up?', type: 'time' },
       { key: 'guestArrivalTime', label: 'Guests arrive', type: 'time' },
-      { key: 'mealTime', label: 'Meal served', type: 'time', weddingOnly: false },
+      { key: 'mealTime', label: 'Meal served', type: 'time' },
       { key: 'speechesTime', label: 'Speeches', type: 'time', weddingOnly: true },
       { key: 'djStartTime', label: 'DJ starts', type: 'time' },
       { key: 'finishTime', label: 'Music must finish by', type: 'time' }
@@ -51,13 +53,14 @@ export const PLANNING_SECTIONS = [
   },
   {
     title: 'Music',
-    hint: 'Song and artist where you can. Anything you list under "do not play" stays off, no exceptions.',
+    hint: 'Search for songs and add them. Anything under "do not play" stays off, no exceptions.',
     fields: [
-      { key: 'firstDance', label: 'First dance', type: 'short', weddingOnly: true, placeholder: 'e.g. Perfect – Ed Sheeran' },
-      { key: 'parentDances', label: 'Parent dances (if any)', type: 'short', weddingOnly: true },
-      { key: 'lastSong', label: 'Last song of the night', type: 'short' },
-      { key: 'mustPlay', label: 'Must play', type: 'long', placeholder: 'One per line' },
-      { key: 'doNotPlay', label: 'Do not play', type: 'long', placeholder: 'One per line' },
+      { key: 'firstDance', label: 'First dance', type: 'songs', max: 1, weddingOnly: true },
+      { key: 'parentDances', label: 'Parent dances (if any)', type: 'songs', max: 5, weddingOnly: true },
+      { key: 'lastSong', label: 'Last song of the night', type: 'songs', max: 1 },
+      { key: 'mustPlay', label: 'Must play', type: 'songs', max: 100, allowImport: true, hint: 'The ones the night is not complete without.' },
+      { key: 'playIfPossible', label: 'Play if possible', type: 'songs', max: 100, hint: "Songs you'd love to hear if they fit the room." },
+      { key: 'doNotPlay', label: 'Do not play', type: 'songs', max: 100 },
       { key: 'musicStyle', label: 'What gets your crowd going?', type: 'long', placeholder: 'Eras, genres, artists, the vibe you want' },
       { key: 'announcements', label: 'Anything to announce?', type: 'long', placeholder: 'Cake cutting, toasts, a birthday in the room' }
     ]
@@ -76,6 +79,21 @@ export const PLANNING_SECTIONS = [
     fields: [{ key: 'extraNotes', label: 'Anything else we should know?', type: 'long' }]
   }
 ];
+
+export const PLANNING_FIELDS = PLANNING_SECTIONS.flatMap((section) => section.fields);
+
+// A song list as "Artist – Title" lines. Legacy plain text passes through.
+export const songsToText = (value) => {
+  if (typeof value === 'string') return value;
+  if (!Array.isArray(value)) return '';
+  return value.map((s) => (s.artist ? `${s.artist} – ${s.title}` : s.title)).join('\n');
+};
+
+// Every song list in the answers as one block of text, ready for a DJ's prep.
+export const answersToSetlistText = (answers = {}) =>
+  PLANNING_FIELDS.filter((f) => f.type === 'songs' && answers[f.key] && songsToText(answers[f.key]))
+    .map((f) => `${f.label}\n${songsToText(answers[f.key])}`)
+    .join('\n\n');
 
 export const PLANNING_FIELD_LABELS = Object.fromEntries(
   PLANNING_SECTIONS.flatMap((section) => section.fields.map((f) => [f.key, f.label]))

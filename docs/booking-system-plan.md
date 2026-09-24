@@ -242,9 +242,11 @@ Tests: 16 for the calendar Lambda, 25 for the admin Lambda, 13 React cases.
 3. Move a booking to Booked and confirm it appears in the calendar after the
    next refresh (calendar apps poll on their own schedule, often hourly).
 
-## Phase 4 — client planning form (code complete, not deployed)
+## Phase 4 — client planning form (deployed 2026-09-24)
 
-Branch `bookings-phase-4`.
+Deployed and verified: a link was created on the test booking, the form was
+filled in, the booking moved to Details received, and the calendar description
+picked up the timings.
 
 ### How it works
 
@@ -291,6 +293,48 @@ the planning page (`src/plan/PlanApp.test.js`) and 15 for the admin screen.
 3. Copy the link, open it in a private window, fill in a few fields, send.
 4. Check: the booking is at Details received, the answers show in the admin
    card, an email arrived, and the calendar event's description has the timings.
+
+## Phase 4b — song picker (code complete, not deployed)
+
+Branch `song-picker`. Prompted by apps like Vibo: clients pick real songs with
+artwork and previews instead of typing names.
+
+### Catalogue
+
+- `aws/lambda/music-search` on public `GET /music/search?q=` and
+  `GET /music/playlist?url=`. Apple Music is the catalogue when a MusicKit key is
+  in Parameter Store (`/perfect-events/apple-music/{private-key,key-id,team-id}`,
+  SecureString; setup in `DEPLOYMENT.md`). The Lambda signs the ES256 developer
+  token itself with Node's crypto, no library. Deezer, which needs no key, is the
+  automatic fallback, so search works before the key exists and if it ever breaks.
+  Results are normalised to one shape: `{ source, id, title, artist, album,
+  artwork, previewUrl, durationMs, url }`. Cached per query for 10 minutes.
+- Spotify's API was ruled out: since February 2026 development-mode apps are
+  capped at 5 named users and 10 search results, and extended access needs a
+  business with 250k monthly users. Spotify playlist links get a clear message.
+- Apple Music and Deezer playlist links import every track (up to 300).
+
+### Data
+
+Song fields on the planning answers (`firstDance`, `parentDances`, `lastSong`,
+`mustPlay`, new `playIfPossible`, `doNotPlay`) hold a list of song records with
+only the known keys, validated in the planning Lambda (source apple/deezer/manual,
+https links only, list maximums 1/5/1/100/100/100). Plain text is still accepted
+for these fields because forms filled in before the picker saved text; the page
+shows it as a textarea with a "Use song search instead" switch.
+
+### Screens
+
+- `src/plan/SongPicker.js`: search with 300ms debounce, results with artwork and
+  a 30-second preview (one shared player, `src/plan/preview.js`), add/remove,
+  "Can't find it? Type it in" for manual entries, playlist import on Must play.
+- Admin planning card shows song lists with artwork and an "Open" link, plus
+  "Copy song lists as text" (Artist – Title per line) for Rekordbox/Serato prep.
+- The notification email and the calendar description render songs as
+  "Artist – Title".
+
+Tests: 13 music-search Lambda, 21 planning Lambda, 17 calendar, 14 React cases
+for the planning page and picker, 15 for the admin screen.
 
 ## Phase 5 — reminders and files
 

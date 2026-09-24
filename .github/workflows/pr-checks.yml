@@ -29,6 +29,7 @@ jobs:
             aws/lambda/admin-bookings/package-lock.json
             aws/lambda/calendar-feed/package-lock.json
             aws/lambda/planning-form/package-lock.json
+            aws/lambda/music-search/package-lock.json
 
       - name: Install site dependencies
         run: npm ci
@@ -71,6 +72,14 @@ jobs:
 
       - name: Test planning form Lambda
         working-directory: aws/lambda/planning-form
+        run: npm test
+
+      - name: Install music search Lambda dependencies
+        working-directory: aws/lambda/music-search
+        run: npm ci
+
+      - name: Test music search Lambda
+        working-directory: aws/lambda/music-search
         run: npm test
 
       - name: Build React app

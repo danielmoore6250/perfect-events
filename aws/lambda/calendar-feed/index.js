@@ -127,7 +127,12 @@ const describe = (b) => {
     ['Finish', answers.finishTime]
   ].filter(([, value]) => value);
   if (timings.length) lines.push(`Timings: ${timings.map(([label, value]) => `${label} ${value}`).join(', ')}`);
-  if (answers.firstDance) lines.push(`First dance: ${answers.firstDance}`);
+  // The first dance is a song record once picked from the catalogue, or plain
+  // text from a form filled in before the picker existed.
+  const firstDance = Array.isArray(answers.firstDance)
+    ? answers.firstDance.map((s) => (s.artist ? `${s.artist} – ${s.title}` : s.title)).join(', ')
+    : answers.firstDance;
+  if (firstDance) lines.push(`First dance: ${firstDance}`);
   if (answers.venueContactName || answers.venueContactPhone) {
     lines.push(`Venue contact: ${[answers.venueContactName, answers.venueContactPhone].filter(Boolean).join(' ')}`);
   }

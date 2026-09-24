@@ -29,6 +29,9 @@ const LOCK_DAYS_BEFORE = 3;
 //   time:  HH:MM, 24-hour
 //   short: single line
 //   long:  free text
+//   songs: a list of song records picked from the catalogue (or typed in), up
+//          to `max` of them. A plain string is still accepted for these, which
+//          is how forms filled in before the song picker existed were saved.
 const FIELDS = {
   setupAccessTime: { type: 'time' },
   guestArrivalTime: { type: 'time' },
@@ -36,11 +39,12 @@ const FIELDS = {
   speechesTime: { type: 'time' },
   djStartTime: { type: 'time' },
   finishTime: { type: 'time' },
-  firstDance: { type: 'short' },
-  parentDances: { type: 'short' },
-  lastSong: { type: 'short' },
-  mustPlay: { type: 'long' },
-  doNotPlay: { type: 'long' },
+  firstDance: { type: 'songs', max: 1, textMax: 200 },
+  parentDances: { type: 'songs', max: 5, textMax: 200 },
+  lastSong: { type: 'songs', max: 1, textMax: 200 },
+  mustPlay: { type: 'songs', max: 100, textMax: 3000 },
+  playIfPossible: { type: 'songs', max: 100, textMax: 3000 },
+  doNotPlay: { type: 'songs', max: 100, textMax: 3000 },
   musicStyle: { type: 'long' },
   announcements: { type: 'long' },
   venueContactName: { type: 'short' },
@@ -49,6 +53,76 @@ const FIELDS = {
   extraNotes: { type: 'long' }
 };
 const MAX_LENGTH = { time: 5, short: 200, long: 3000 };
+
+// One picked song. Only these keys are stored; anything else is dropped.
+const SONG_SOURCES = new Set(['apple', 'deezer', 'manual']);
+const SONG_TEXT_MAX = 200;
+const SONG_URL_MAX = 600;
+
+const isHttpsUrl = (value) => {
+  try {
+    return new URL(value).protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+
+const parseSong = (raw, field) => {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new HttpError(400, `${field} entries must be songs`);
+  const text = (key, max = SONG_TEXT_MAX) => {
+    const v = raw[key];
+    if (v === undefined || v === null) return null;
+    if (typeof v !== 'string') throw new HttpError(400, `${field}: ${key} must be text`);
+    const t = v.trim();
+    if (t.length > max) throw new HttpError(400, `${field}: ${key} is too long`);
+    return t || null;
+  };
+  const url = (key) => {
+    const v = text(key, SONG_URL_MAX);
+    if (v && !isHttpsUrl(v)) throw new HttpError(400, `${field}: ${key} must be an https link`);
+    return v;
+  };
+
+  const source = text('source');
+  if (!SONG_SOURCES.has(source)) throw new HttpError(400, `${field}: source must be apple, deezer or manual`);
+  const title = text('title');
+  if (!title) throw new HttpError(400, `${field}: every song needs a title`);
+
+  const song = {
+    source,
+    id: source === 'manual' ? null : text('id', 100),
+    title,
+    artist: text('artist') || '',
+    album: text('album'),
+    artwork: url('artwork'),
+    previewUrl: url('previewUrl'),
+    url: url('url'),
+    durationMs: typeof raw.durationMs === 'number' && Number.isFinite(raw.durationMs) && raw.durationMs >= 0 ? Math.round(raw.durationMs) : null
+  };
+  if (song.source !== 'manual' && !song.id) throw new HttpError(400, `${field}: catalogue songs need an id`);
+  return song;
+};
+
+const parseSongs = (raw, key, spec) => {
+  // Legacy: plain text from before the picker.
+  if (typeof raw === 'string') {
+    const value = raw.replace(/\r\n/g, '\n').trim();
+    if (!value) return undefined;
+    if (value.length > spec.textMax) throw new HttpError(400, `${key} is too long (max ${spec.textMax} characters)`);
+    return value;
+  }
+  if (!Array.isArray(raw)) throw new HttpError(400, `${key} must be a list of songs`);
+  if (raw.length > spec.max) throw new HttpError(400, `${key} can hold at most ${spec.max} song${spec.max === 1 ? '' : 's'}`);
+  const songs = raw.map((entry) => parseSong(entry, key));
+  return songs.length ? songs : undefined;
+};
+
+// A song list as plain text: "Artist – Title" per line. Legacy text passes through.
+const songsToText = (value) => {
+  if (typeof value === 'string') return value;
+  if (!Array.isArray(value)) return '';
+  return value.map((s) => (s.artist ? `${s.artist} – ${s.title}` : s.title)).join('\n');
+};
 
 const EVENT_TYPE_LABELS = {
   wedding: 'wedding',
@@ -95,6 +169,13 @@ const parseAnswers = (body) => {
 
     const raw = answers[key];
     if (raw === null || raw === undefined) continue;
+
+    if (spec.type === 'songs') {
+      const songs = parseSongs(raw, key, spec);
+      if (songs !== undefined) clean[key] = songs;
+      continue;
+    }
+
     if (typeof raw !== 'string') throw new HttpError(400, `${key} must be text`);
 
     const value = raw.replace(/\r\n/g, '\n').trim();
@@ -251,6 +332,7 @@ const FIELD_LABELS = {
   parentDances: 'Parent dances',
   lastSong: 'Last song',
   mustPlay: 'Must play',
+  playIfPossible: 'Play if possible',
   doNotPlay: 'Do not play',
   musicStyle: 'Music style',
   announcements: 'Announcements',
@@ -267,14 +349,12 @@ const notifyBusiness = async (booking, firstSubmission) => {
   const link = `${ADMIN_URL}/${booking.id}`;
   const answers = booking.planning?.answers || {};
 
-  const rows = Object.keys(FIELDS)
-    .filter((key) => answers[key])
-    .map((key) => `<tr><td style="padding:6px 12px 6px 0;color:#666;vertical-align:top;white-space:nowrap">${esc(FIELD_LABELS[key])}</td><td style="padding:6px 0">${esc(answers[key]).replace(/\n/g, '<br>')}</td></tr>`)
+  const asText = (key) => (FIELDS[key].type === 'songs' ? songsToText(answers[key]) : answers[key]);
+  const answered = Object.keys(FIELDS).filter((key) => answers[key] && asText(key));
+  const rows = answered
+    .map((key) => `<tr><td style="padding:6px 12px 6px 0;color:#666;vertical-align:top;white-space:nowrap">${esc(FIELD_LABELS[key])}</td><td style="padding:6px 0">${esc(asText(key)).replace(/\n/g, '<br>')}</td></tr>`)
     .join('');
-  const text = Object.keys(FIELDS)
-    .filter((key) => answers[key])
-    .map((key) => `${FIELD_LABELS[key]}: ${answers[key]}`)
-    .join('\n');
+  const text = answered.map((key) => `${FIELD_LABELS[key]}: ${asText(key)}`).join('\n');
 
   const html = `<!DOCTYPE html><html><body style="font-family:-apple-system,Segoe UI,sans-serif;color:#222;max-width:640px">
 <h2 style="margin:0 0 4px">${esc(name)} has ${firstSubmission ? 'filled in' : 'updated'} their planning form</h2>
@@ -369,3 +449,4 @@ exports.handler = async (event) => {
 exports.FIELDS = FIELDS;
 exports.FIELD_LABELS = FIELD_LABELS;
 exports.isLocked = isLocked;
+exports.songsToText = songsToText;

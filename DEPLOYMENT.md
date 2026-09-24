@@ -113,3 +113,30 @@ at the end of the run.
 `./infra/deploy.sh` still works and does the same thing with your local AWS
 credentials. Useful if GitHub Actions is unavailable, but the workflow is the
 normal route so that every deploy is traceable to a run.
+
+## Apple Music key (song search)
+
+The planning form's song search uses Apple Music when a MusicKit key is in
+Parameter Store, and Deezer otherwise. Nothing needs redeploying when the key is
+added; the Lambda picks it up on its next cold start.
+
+1. Apple Developer portal → Certificates, Identifiers & Profiles → Keys → **+**.
+   Name it, tick **MusicKit**, continue, register, download the `.p8` file. It can
+   only be downloaded once. Note the **Key ID** on that page and the **Team ID**
+   from the top right of the portal.
+2. Store the three values as SecureString parameters (region `eu-west-1`):
+
+```bash
+aws ssm put-parameter --region eu-west-1 --type SecureString --name /perfect-events/apple-music/private-key --value "$(cat AuthKey_XXXXXXXXXX.p8)"
+aws ssm put-parameter --region eu-west-1 --type SecureString --name /perfect-events/apple-music/key-id --value XXXXXXXXXX
+aws ssm put-parameter --region eu-west-1 --type SecureString --name /perfect-events/apple-music/team-id --value YYYYYYYYYY
+```
+
+3. Force a fresh container so it re-reads the parameters, or just wait:
+
+```bash
+aws lambda update-function-configuration --region eu-west-1 --function-name perfect-events-music-search --description "apple key $(date +%F)"
+```
+
+To check which catalogue is answering: the JSON from `/music/search?q=test` has
+`"source": "apple"` or `"source": "deezer"`.
