@@ -382,13 +382,16 @@ export class InfraStack extends cdk.Stack {
     // gets more headroom; a playlist import is a handful per event at most.
     // These are totals across all callers, sized for a handful of clients
     // planning at once, not for a public product.
+    // RouteSettings is passed straight through to CloudFormation, so the keys
+    // must be the PascalCase names CloudFormation expects.
     const defaultStage = httpApi.defaultStage?.node.defaultChild as apigatewayv2.CfnStage;
+    const throttle = (rate: number, burst: number) => ({ ThrottlingRateLimit: rate, ThrottlingBurstLimit: burst });
     defaultStage.routeSettings = {
-      'GET /music/search': { throttlingRateLimit: 10, throttlingBurstLimit: 20 },
-      'GET /music/playlist': { throttlingRateLimit: 1, throttlingBurstLimit: 3 },
-      'GET /plan/{token}': { throttlingRateLimit: 5, throttlingBurstLimit: 10 },
-      'POST /plan/{token}': { throttlingRateLimit: 2, throttlingBurstLimit: 5 },
-      'POST /send-enquiry': { throttlingRateLimit: 2, throttlingBurstLimit: 5 },
+      'GET /music/search': throttle(10, 20),
+      'GET /music/playlist': throttle(1, 3),
+      'GET /plan/{token}': throttle(5, 10),
+      'POST /plan/{token}': throttle(2, 5),
+      'POST /send-enquiry': throttle(2, 5),
     };
 
     // The client planning form: <api>/plan/<token>. Token is the credential.
