@@ -232,3 +232,13 @@
 
 .planning { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
 .planning__item { display: contents; }
+
+.planning__tools { margin-bottom: 12px; }
+.songlist--admin { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.songlist--admin .song { display: flex; align-items: center; gap: 10px; padding: 6px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--border); }
+.songlist--admin .song__art { width: 40px; height: 40px; border-radius: 6px; object-fit: cover; flex: none; background: var(--surface); }
+.songlist--admin .song__art--blank { display: grid; place-items: center; color: var(--text-dim); }
+.songlist--admin .song__text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.songlist--admin .song__title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.songlist--admin .song__artist { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.button--small { padding: 7px 12px; font-size: 13px; flex: none; text-decoration: none; }

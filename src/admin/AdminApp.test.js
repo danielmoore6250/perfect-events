@@ -410,3 +410,50 @@ test("the planning card shows the client's answers once submitted", async () => 
   expect(screen.getByText(/Cha Cha Slide/)).toBeInTheDocument();
   expect(screen.queryByText('Not filled in yet.')).not.toBeInTheDocument();
 });
+
+test('the planning card renders picked songs with artwork, an Open link, and copies them as text', async () => {
+  const writeText = jest.fn().mockResolvedValue();
+  Object.assign(navigator, { clipboard: { writeText } });
+  store[booking.id] = {
+    ...store[booking.id],
+    planningToken: 'tok_existing_0000000000000000000',
+    planning: {
+      answers: {
+        firstDance: [{ source: 'apple', id: '100', title: 'Perfect', artist: 'Ed Sheeran', album: '÷', artwork: 'https://is1-ssl.mzstatic.com/100/300x300bb.jpg', previewUrl: null, url: 'https://music.apple.com/gb/album/x/100', durationMs: 263000 }],
+        mustPlay: [
+          { source: 'deezer', id: '9', title: 'Boston', artist: 'Augustana', album: null, artwork: null, previewUrl: null, url: 'https://www.deezer.com/track/9', durationMs: null },
+          { source: 'manual', id: null, title: 'Our song', artist: '', album: null, artwork: null, previewUrl: null, url: null, durationMs: null }
+        ],
+        doNotPlay: 'Cha Cha Slide'
+      },
+      submittedAt: '2026-09-25T10:00:00.000Z',
+      updatedAt: '2026-09-25T10:00:00.000Z'
+    }
+  };
+  render(<AdminApp />);
+  await signIn();
+  fireEvent.click(await screen.findByText('Aoife Murphy'));
+  await screen.findByRole('heading', { name: 'Aoife Murphy' });
+
+  const lists = screen.getAllByRole('list').filter((l) => l.className.includes('songlist'));
+  expect(lists).toHaveLength(2);
+
+  const first = within(lists[0]);
+  expect(first.getByText('Perfect')).toBeInTheDocument();
+  expect(first.getByText('Ed Sheeran')).toBeInTheDocument();
+  expect(lists[0].querySelector('img')).toHaveAttribute('src', 'https://is1-ssl.mzstatic.com/100/300x300bb.jpg');
+  expect(first.getByRole('link', { name: 'Open' })).toHaveAttribute('href', 'https://music.apple.com/gb/album/x/100');
+
+  const must = within(lists[1]);
+  expect(must.getByText('Boston')).toBeInTheDocument();
+  expect(must.getByText('Our song')).toBeInTheDocument();
+  expect(must.getByText('Typed in by the client')).toBeInTheDocument();
+  expect(must.getAllByRole('link', { name: 'Open' })).toHaveLength(1);
+
+  // Legacy text still shows as text.
+  expect(screen.getByText('Cha Cha Slide')).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Copy song lists as text' }));
+  expect(writeText).toHaveBeenCalledWith('First dance\nEd Sheeran – Perfect\n\nMust play\nAugustana – Boston\nOur song\n\nDo not play\nCha Cha Slide');
+  expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument();
+});

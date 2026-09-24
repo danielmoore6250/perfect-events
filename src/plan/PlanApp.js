@@ -6,6 +6,8 @@ import '../styles/Admin.css';
 import '../styles/Plan.css';
 import { API_BASE } from '../config';
 import { PLANNING_SECTIONS, WEDDING_PACKAGE_LABELS, formatDateTime } from '../shared/format';
+import SongPicker from './SongPicker';
+import { stopPreview } from './preview';
 
 const tokenFromPath = () => {
   const match = window.location.pathname.match(/^\/plan\/([A-Za-z0-9_-]+)\/?$/);
@@ -13,7 +15,9 @@ const tokenFromPath = () => {
 };
 
 const emptyAnswers = () =>
-  Object.fromEntries(PLANNING_SECTIONS.flatMap((s) => s.fields.map((f) => [f.key, ''])));
+  Object.fromEntries(PLANNING_SECTIONS.flatMap((s) => s.fields.map((f) => [f.key, f.type === 'songs' ? [] : ''])));
+
+const sameAnswer = (a, b) => JSON.stringify(a ?? '') === JSON.stringify(b ?? '');
 
 const firstName = (name) => (name || '').trim().split(/\s+/)[0] || 'there';
 
@@ -60,8 +64,12 @@ export default function PlanApp() {
     setJustSaved(false);
     setAnswers((a) => ({ ...a, [key]: e.target.value }));
   };
+  const setValue = (key) => (value) => {
+    setJustSaved(false);
+    setAnswers((a) => ({ ...a, [key]: value }));
+  };
 
-  const dirty = saved && Object.keys(answers).some((k) => (answers[k] || '') !== (saved[k] || ''));
+  const dirty = saved && Object.keys(answers).some((k) => !sameAnswer(answers[k], saved[k]));
 
   const submit = async (e) => {
     e.preventDefault();
@@ -84,6 +92,7 @@ export default function PlanApp() {
       if (!res.ok) throw new Error(data.error || 'Could not save. Please try again.');
       apply(data.booking);
       setJustSaved(true);
+      stopPreview();
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
       setError(err.message);
@@ -157,7 +166,18 @@ export default function PlanApp() {
               <legend className="card__title">{section.title}</legend>
               {section.hint && <p className="muted small plan__hint">{section.hint}</p>}
               <div className={section.fields[0].type === 'time' ? 'plan__grid' : 'plan__stack'}>
-                {fields.map((f) => (
+                {fields.map((f) => f.type === 'songs' ? (
+                  <SongPicker
+                    key={f.key}
+                    label={f.label}
+                    hint={f.hint}
+                    value={answers[f.key]}
+                    onChange={setValue(f.key)}
+                    max={f.max}
+                    allowImport={f.allowImport}
+                    disabled={locked || busy}
+                  />
+                ) : (
                   <label className="field" key={f.key}>
                     <span>{f.label}</span>
                     {f.type === 'long' ? (

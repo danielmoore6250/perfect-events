@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from 'react';
 import '../styles/Admin.css';
 import { getSession, signIn, completeNewPassword, forgotPassword, confirmForgotPassword, clearSession } from './auth';
 import { listBookings, getBooking, updateBooking, getCalendarLink, rotateCalendarLink, calendarFeedUrl, createPlanningLink, planningFormUrl } from './api';
-import { EVENT_TYPE_LABELS, WEDDING_PACKAGE_LABELS, labelFor, formatEventDate, formatDateTime, PLANNING_SECTIONS, PLANNING_FIELD_LABELS } from '../shared/format';
+import { EVENT_TYPE_LABELS, WEDDING_PACKAGE_LABELS, labelFor, formatEventDate, formatDateTime, PLANNING_SECTIONS, PLANNING_FIELD_LABELS, answersToSetlistText } from '../shared/format';
 
 const STATUSES = [
   { value: 'enquiry', label: 'Enquiry' },
@@ -358,15 +358,49 @@ const changesBetween = (original, form) => {
 };
 
 // The client's planning link and, once they have filled it in, their answers.
+// A song list on the admin side: artwork, title, artist, link. Legacy text
+// from before the picker shows as it was typed.
+function SongAnswer({ value }) {
+  if (typeof value === 'string') return <dd className="prewrap">{value}</dd>;
+  return (
+    <dd>
+      <ul className="songlist songlist--admin">
+        {value.map((song, i) => (
+          <li className="song" key={`${song.source}:${song.id || song.title}:${i}`}>
+            {song.artwork ? <img className="song__art" src={song.artwork} alt="" loading="lazy" /> : <span className="song__art song__art--blank" aria-hidden="true">♪</span>}
+            <span className="song__text">
+              <span className="song__title">{song.title}</span>
+              <span className="song__artist muted small">{song.artist || (song.source === 'manual' ? 'Typed in by the client' : '')}</span>
+            </span>
+            {song.url && <a className="button button--small" href={song.url} target="_blank" rel="noreferrer">Open</a>}
+          </li>
+        ))}
+      </ul>
+    </dd>
+  );
+}
+
 function PlanningCard({ booking, onBookingChange, onAuthLost }) {
   const [copied, setCopied] = useState(false);
+  const [copiedSetlist, setCopiedSetlist] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
   const url = booking.planningToken ? planningFormUrl(booking.planningToken) : null;
   const answers = booking.planning?.answers || {};
-  const answered = PLANNING_SECTIONS.flatMap((s) => s.fields).filter((f) => answers[f.key]);
+  const answered = PLANNING_SECTIONS.flatMap((s) => s.fields).filter((f) => answers[f.key] && (!Array.isArray(answers[f.key]) || answers[f.key].length));
   const isWedding = booking.event?.type === 'wedding';
+  const setlist = answersToSetlistText(answers);
+
+  const copySetlist = async () => {
+    try {
+      await navigator.clipboard.writeText(setlist);
+      setCopiedSetlist(true);
+      setTimeout(() => setCopiedSetlist(false), 2000);
+    } catch {
+      setError('Could not copy. Select the text and copy it by hand.');
+    }
+  };
 
   const run = async (fn) => {
     setError('');
@@ -429,16 +463,24 @@ function PlanningCard({ booking, onBookingChange, onAuthLost }) {
           {answered.length === 0 ? (
             <p className="muted">They saved the form without any answers.</p>
           ) : (
-            <dl className="facts facts--stacked">
-              {answered
-                .filter((f) => !f.weddingOnly || isWedding)
-                .map((f) => (
-                  <div key={f.key} className="planning__item">
-                    <dt>{PLANNING_FIELD_LABELS[f.key]}</dt>
-                    <dd className="prewrap">{answers[f.key]}</dd>
-                  </div>
-                ))}
-            </dl>
+            <>
+              {setlist && (
+                <div className="detail__actions planning__tools">
+                  <button type="button" className="button button--small" onClick={copySetlist}>{copiedSetlist ? 'Copied' : 'Copy song lists as text'}</button>
+                  <span className="muted small">Artist – Title per line, for Rekordbox or Serato prep.</span>
+                </div>
+              )}
+              <dl className="facts facts--stacked">
+                {answered
+                  .filter((f) => !f.weddingOnly || isWedding)
+                  .map((f) => (
+                    <div key={f.key} className="planning__item">
+                      <dt>{PLANNING_FIELD_LABELS[f.key]}</dt>
+                      {f.type === 'songs' ? <SongAnswer value={answers[f.key]} /> : <dd className="prewrap">{answers[f.key]}</dd>}
+                    </div>
+                  ))}
+              </dl>
+            </>
           )}
         </div>
       ) : (

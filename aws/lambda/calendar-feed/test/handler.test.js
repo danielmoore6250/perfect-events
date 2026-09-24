@@ -171,6 +171,10 @@ test('planning form timings and contacts appear in the description once the clie
   bookings = [booking()];
   const plain = unfold((await handler(request(TOKEN))).body);
   assert.ok(!plain.includes('Timings:'));
+
+  bookings = [booking({ planning: { answers: { firstDance: [{ source: 'apple', id: '1', title: 'Perfect', artist: 'Ed Sheeran' }] }, submittedAt: 'x', updatedAt: 'x' } })];
+  const picked = unfold((await handler(request(TOKEN))).body);
+  assert.ok(picked.includes('First dance: Ed Sheeran – Perfect'));
 });
 
 test('a paid balance is reported as paid', async () => {

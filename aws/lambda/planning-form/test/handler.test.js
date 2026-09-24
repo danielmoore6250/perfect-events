@@ -228,10 +228,11 @@ test('POST validation rejects bad input with 400 and saves nothing', async () =>
     [{ answers: { toString: 'x' } }, /Unknown field/],
     [{ answers: { hasOwnProperty: 'x' } }, /Unknown field/],
     [JSON.parse('{"answers":{"__proto__":{"polluted":true}}}'), /Unknown field/],
-    [{ answers: { firstDance: 42 } }, /must be text/],
+    [{ answers: { venueContactName: 42 } }, /must be text/],
+    [{ answers: { firstDance: 42 } }, /must be a list of songs/],
     [{ answers: { djStartTime: '7pm' } }, /time like 19:30/],
     [{ answers: { djStartTime: '25:00' } }, /time like 19:30/],
-    [{ answers: { firstDance: 'x'.repeat(201) } }, /too long/],
+    [{ answers: { venueContactName: 'x'.repeat(201) } }, /too long/],
     [{ answers: { mustPlay: 'x'.repeat(3001) } }, /too long/],
     [[], /Body must be a JSON object/]
   ];
@@ -351,4 +352,84 @@ test('a missing table or a DynamoDB failure never leaks details', async () => {
   const res = await handler(request('GET', TOKEN));
   assert.equal(res.statusCode, 500);
   assert.deepEqual(JSON.parse(res.body), { error: 'Something went wrong' });
+});
+
+const song = (overrides = {}) => ({
+  source: 'apple',
+  id: '100',
+  title: 'Perfect',
+  artist: 'Ed Sheeran',
+  album: '÷',
+  artwork: 'https://is1-ssl.mzstatic.com/300x300bb.jpg',
+  previewUrl: 'https://audio-ssl.itunes.apple.com/100.m4a',
+  url: 'https://music.apple.com/gb/album/x/100',
+  durationMs: 263000,
+  ...overrides
+});
+
+test('song lists are stored as song records with only the known keys', async () => {
+  const { handler } = loadModule();
+  const res = await handler(
+    request('POST', TOKEN, {
+      answers: {
+        firstDance: [song({ extra: 'dropped', durationMs: 263000.7 })],
+        mustPlay: [song({ id: '1', title: 'Mr Brightside', artist: 'The Killers' }), { source: 'manual', title: 'Our song', artist: ' Nobody famous ' }],
+        playIfPossible: [song({ source: 'deezer', id: '9', title: 'Boston', artist: 'Augustana', album: null, artwork: null, previewUrl: null, url: null, durationMs: null })],
+        doNotPlay: []
+      }
+    })
+  );
+
+  assert.equal(res.statusCode, 200);
+  const saved = store['abc-123'].planning.answers;
+  assert.deepEqual(saved.firstDance, [{ ...song(), durationMs: 263001 }]);
+  assert.deepEqual(saved.mustPlay[1], {
+    source: 'manual', id: null, title: 'Our song', artist: 'Nobody famous', album: null, artwork: null, previewUrl: null, url: null, durationMs: null
+  });
+  assert.equal(saved.playIfPossible[0].source, 'deezer');
+  assert.equal(saved.doNotPlay, undefined, 'an empty list is not stored');
+
+  const html = emails[0].Content.Simple.Body.Html.Data;
+  assert.ok(html.includes('Ed Sheeran – Perfect'));
+  assert.ok(html.includes('The Killers – Mr Brightside<br>Nobody famous – Our song'));
+  assert.ok(emails[0].Content.Simple.Body.Text.Data.includes('Play if possible: Augustana – Boston'));
+});
+
+test('song lists still accept the plain text that older forms saved', async () => {
+  const { handler } = loadModule();
+  const res = await handler(request('POST', TOKEN, { answers: { mustPlay: 'Mr Brightside\nDancing Queen', firstDance: 'Perfect' } }));
+  assert.equal(res.statusCode, 200);
+  assert.equal(store['abc-123'].planning.answers.mustPlay, 'Mr Brightside\nDancing Queen');
+  assert.ok(emails[0].Content.Simple.Body.Text.Data.includes('Must play: Mr Brightside\nDancing Queen'));
+});
+
+test('song list validation rejects bad songs, wrong sizes and unsafe links', async () => {
+  const { handler } = loadModule();
+  const bad = [
+    [{ firstDance: [song(), song()] }, /at most 1 song$/],
+    [{ parentDances: Array(6).fill(song()) }, /at most 5 songs/],
+    [{ mustPlay: 'x'.repeat(3001) }, /too long/],
+    [{ firstDance: 'x'.repeat(201) }, /too long/],
+    [{ mustPlay: [{ source: 'spotify', id: '1', title: 'x' }] }, /source must be/],
+    [{ mustPlay: [{ source: 'apple', title: 'x' }] }, /need an id/],
+    [{ mustPlay: [{ source: 'apple', id: '1' }] }, /needs a title/],
+    [{ mustPlay: [{ source: 'apple', id: '1', title: 'x', artwork: 'http://insecure.example/x.jpg' }] }, /https link/],
+    [{ mustPlay: [{ source: 'apple', id: '1', title: 'x', previewUrl: 'javascript:alert(1)' }] }, /https link/],
+    [{ mustPlay: [{ source: 'apple', id: '1', title: 'x', artist: 42 }] }, /must be text/],
+    [{ mustPlay: ['just a string in a list'] }, /entries must be songs/],
+    [{ mustPlay: { source: 'apple' } }, /must be a list of songs/]
+  ];
+  for (const [answers, pattern] of bad) {
+    const res = await handler(request('POST', TOKEN, { answers }));
+    assert.equal(res.statusCode, 400, JSON.stringify(answers).slice(0, 80));
+    assert.match(JSON.parse(res.body).error, pattern);
+  }
+  assert.equal(updates().length, 0);
+});
+
+test('songsToText renders records and passes legacy text through', () => {
+  const { songsToText } = loadModule();
+  assert.equal(songsToText([song(), { source: 'manual', title: 'Untitled', artist: '' }]), 'Ed Sheeran – Perfect\nUntitled');
+  assert.equal(songsToText('typed in'), 'typed in');
+  assert.equal(songsToText(undefined), '');
 });

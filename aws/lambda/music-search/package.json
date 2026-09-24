@@ -1,0 +1,14 @@
+{
+  "name": "music-search",
+  "version": "1.0.0",
+  "description": "Song search and playlist import for the client planning form (Apple Music, Deezer fallback)",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test test/handler.test.js"
+  },
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@aws-sdk/client-ssm": "^3.1137.0"
+  }
+}
