@@ -1,0 +1,15 @@
+{
+  "name": "admin-bookings",
+  "version": "1.0.0",
+  "description": "Admin API for Perfect Events NI bookings: list, get and update records",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test test/handler.test.js"
+  },
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1137.0",
+    "@aws-sdk/lib-dynamodb": "^3.1137.0"
+  }
+}

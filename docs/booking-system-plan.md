@@ -119,10 +119,14 @@ transport, so tests assert on the exact record written and the exact HTML sent:
 validation, escaping, date handling, the write-before-email order, and every
 degraded path (write fails, table unset, either email fails, both fail).
 
-There are no React tests. The CRA boilerplate test was removed: it no longer
-matched the site, and CRA's jest cannot resolve Swiper's subpath exports
-(`transformIgnorePatterns` does not fix it — it is a resolver issue, not a
-transform one).
+`src/admin/AdminApp.test.js` (`CI=true npm test -- --watchAll=false`) walks the
+admin screen against a mocked `fetch`: sign-in, first-login password, forgot
+password, list filters, detail, a save that sends only changed fields, a stale
+save, a refresh that fails on the network, session expiry and sign-out. It works
+because the admin screen never imports the public site: CRA's jest cannot
+resolve Swiper's subpath exports (`transformIgnorePatterns` does not fix it — it
+is a resolver issue, not a transform one), so nothing that imports `App.js` can
+be tested this way. The CRA boilerplate test was removed for that reason.
 
 ## Outstanding
 
@@ -144,14 +148,69 @@ transform one).
 Alternatively `./infra/deploy.sh` deploys from a machine with AWS credentials and
 skips steps 3–5, but the workflow is the intended route.
 
-## Phase 2 — admin screen
+## Phase 2 — admin screen (code complete, not deployed)
 
-- Cognito user pool with a single user; JWT authorizer on new API routes.
-- New Lambda(s) behind `/admin/*`: list bookings (query the `ByEventDate` index),
-  get one, update status, pricing and notes. Append to `statusHistory` on every
-  status change.
-- React route `/admin`: list by upcoming date and stage, detail view with editable
-  fields. Keep it plain — this is a working screen, not a product.
+Branch `bookings-phase-2`. Phase 1 was deployed and verified on 2026-09-22.
+
+### Auth
+
+- Cognito user pool `perfect-events-admin`, self sign-up off, `RETAIN`. One user
+  created by the stack (`CfnUserPoolUser`) with the address from the `adminEmail`
+  CDK context value, default `enquiries@perfecteventsni.com`. Cognito emails a
+  temporary password on first deploy; the first sign-in forces a new password
+  (12+ chars, upper, lower, digit).
+- App client `perfect-events-admin-web`: no secret, `USER_PASSWORD_AUTH` only, 1h
+  tokens, 30-day refresh. The React screen calls Cognito's JSON API directly with
+  `fetch` (`src/admin/auth.js`), so no auth SDK is in the bundle. Session lives in
+  `localStorage` and refreshes itself; a refresh that fails on the network keeps
+  the session and shows an error, only a rejected token signs the admin out.
+- "Forgot password?" on the sign-in screen uses Cognito's `ForgotPassword` and
+  `ConfirmForgotPassword`: a code is emailed to the admin address, then a new
+  password is set and the screen signs in with it.
+- `HttpUserPoolAuthorizer` on the bookings routes: API Gateway rejects a bad or
+  missing token before the Lambda runs. The Lambda takes the actor's email from
+  the JWT claims for `statusHistory`.
+
+### API — `aws/lambda/admin-bookings`
+
+| Route | Auth | Does |
+| --- | --- | --- |
+| `GET /admin/config` | none | Region, user pool id and client id for the login screen |
+| `GET /admin/bookings` | JWT | Query `ByEventDate`, all pages, oldest date first |
+| `GET /admin/bookings/{id}` | JWT | One record |
+| `PATCH /admin/bookings/{id}` | JWT | Update `status`, `eventDate`, `pricing`, `notes` |
+
+`PATCH` validates every field and rejects unknown ones. Dates are checked as
+real calendar dates (`2027-02-30` is refused, `Date.parse` alone would accept it).
+A status change appends `{status, at, by}` to `statusHistory`; sending the same
+status does not. The body may carry `expectedUpdatedAt`, the `updatedAt` the
+caller loaded; the update is conditional on it, so a tab that loaded the record
+before someone else saved gets a 409 instead of overwriting them. The screen
+always sends it. Lambda IAM is `GetItem` and `UpdateItem` on the table plus
+`Query` on the index — no delete, no scan.
+
+`pricing` is always the full shape `{ quote, deposit, depositPaidOn,
+balancePaidOn }` with `null` for unset values; balance is derived in the UI.
+
+Tests: `npm test` in the Lambda directory, 22 cases, run in PR checks.
+
+### Screen — `src/admin/`
+
+- `src/index.js` renders `AdminApp` (lazy-loaded) when the path starts with
+  `/admin`, otherwise the public site. No router library.
+- List: defaults to open stages with a date today or later, plus TBC dates.
+  Filter by stage, toggle past dates. Rows link to `/admin/<id>` (pushState).
+- Detail: client and event facts, the enquiry message, status history, and a
+  form for stage, event date, quote, deposit, paid dates and notes. Only changed
+  fields are sent. Balance due is shown from quote minus deposit.
+- `robots.txt` disallows `/admin`.
+
+### To deploy and try
+
+1. Merge the PR, run the Deploy workflow.
+2. Watch the admin inbox for the Cognito invitation with the temporary password.
+3. Visit `perfecteventsni.com/admin`, sign in, set a real password.
+4. Open the test booking, change its stage, save, reload to confirm the history.
 
 ## Phase 3 — calendar feed
 

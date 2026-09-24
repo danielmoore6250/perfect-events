@@ -6,16 +6,44 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as apigatewayv2 from 'aws-cdk-lib/aws-apigatewayv2';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
+import { HttpUserPoolAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
+import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as iam from 'aws-cdk-lib/aws-iam';
-import * as path from 'path';import { execSync } from 'child_process';import { Construct } from 'constructs';
+import * as path from 'path';
+import { execSync } from 'child_process';
+import { Construct } from 'constructs';
 
 // ACM certificate for the custom domain. Must live in us-east-1 for CloudFront.
 // Created/validated out-of-band via Route53 DNS validation (see cutover notes).
 const SITE_CERT_ARN =
   'arn:aws:acm:us-east-1:091869720829:certificate/76dcffc5-760a-4592-9098-ba0245d99cde';
 const SITE_DOMAINS = ['perfecteventsni.com', 'www.perfecteventsni.com'];
+
+// The one admin login. Override with `cdk deploy -c adminEmail=someone@example.com`.
+// Cognito emails a temporary password to this address on first deploy.
+const DEFAULT_ADMIN_EMAIL = 'enquiries@perfecteventsni.com';
+
+// Bundles a plain Node Lambda from aws/lambda/<name>: copies the source and
+// installs production dependencies. No Docker needed.
+const nodeLambdaCode = (name: string): lambda.Code => {
+  const dir = path.join(__dirname, '../../aws/lambda', name);
+  return lambda.Code.fromAsset(dir, {
+    bundling: {
+      image: lambda.Runtime.NODEJS_20_X.bundlingImage,
+      local: {
+        tryBundle(outputDir: string) {
+          execSync(
+            `cp -r ${dir}/* ${outputDir}/ && rm -rf ${outputDir}/test && cd ${outputDir} && npm ci --omit=dev`
+          );
+          return true;
+        },
+      },
+      command: ['echo', 'Docker fallback not needed'],
+    },
+  });
+};
 
 export class InfraStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -91,24 +119,11 @@ export class InfraStack extends cdk.Stack {
     });
 
     // Lambda function for sending enquiries
-    const lambdaDir = path.join(__dirname, '../../aws/lambda/send-enquiry');
-
     const sendEnquiryFn = new lambda.Function(this, 'SendEnquiryFunction', {
       functionName: 'perfect-events-send-enquiry',
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'index.handler',
-      code: lambda.Code.fromAsset(lambdaDir, {
-        bundling: {
-          image: lambda.Runtime.NODEJS_20_X.bundlingImage,
-          local: {
-            tryBundle(outputDir: string) {
-              execSync(`cp -r ${lambdaDir}/* ${outputDir}/ && cd ${outputDir} && npm ci --omit=dev`);
-              return true;
-            },
-          },
-          command: ['echo', 'Docker fallback not needed'],
-        },
-      }),
+      code: nodeLambdaCode('send-enquiry'),
       timeout: cdk.Duration.seconds(30),
       memorySize: 128,
       environment: {
@@ -129,12 +144,93 @@ export class InfraStack extends cdk.Stack {
       resources: [bookingsTable.tableArn],
     }));
 
+    // ---- Admin: Cognito user pool with a single user ----------------------
+    // Nobody can sign themselves up; the one user is created below and gets a
+    // temporary password by email. RETAIN so a stack rebuild does not lock the
+    // admin out or force a password reset.
+    const adminEmail: string = this.node.tryGetContext('adminEmail') ?? DEFAULT_ADMIN_EMAIL;
+
+    const adminUserPool = new cognito.UserPool(this, 'AdminUserPool', {
+      userPoolName: 'perfect-events-admin',
+      selfSignUpEnabled: false,
+      signInAliases: { email: true },
+      autoVerify: { email: true },
+      passwordPolicy: {
+        minLength: 12,
+        requireLowercase: true,
+        requireUppercase: true,
+        requireDigits: true,
+        requireSymbols: false,
+      },
+      accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
+      mfa: cognito.Mfa.OFF,
+      userInvitation: {
+        emailSubject: 'Your Perfect Events NI admin login',
+        emailBody:
+          'Your admin login for perfecteventsni.com/admin is {username} and your temporary password is {####}. ' +
+          'You will be asked to choose a new password the first time you sign in.',
+      },
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    // The React admin screen signs in with username + password directly against
+    // Cognito (no hosted UI, no client secret, nothing extra in the bundle).
+    const adminClient = adminUserPool.addClient('AdminWebClient', {
+      userPoolClientName: 'perfect-events-admin-web',
+      generateSecret: false,
+      authFlows: { userPassword: true },
+      preventUserExistenceErrors: true,
+      idTokenValidity: cdk.Duration.hours(1),
+      accessTokenValidity: cdk.Duration.hours(1),
+      refreshTokenValidity: cdk.Duration.days(30),
+    });
+
+    new cognito.CfnUserPoolUser(this, 'AdminUser', {
+      userPoolId: adminUserPool.userPoolId,
+      username: adminEmail,
+      desiredDeliveryMediums: ['EMAIL'],
+      userAttributes: [
+        { name: 'email', value: adminEmail },
+        { name: 'email_verified', value: 'true' },
+      ],
+    });
+
+    // ---- Admin: bookings API Lambda --------------------------------------
+    const adminBookingsFn = new lambda.Function(this, 'AdminBookingsFunction', {
+      functionName: 'perfect-events-admin-bookings',
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: 'index.handler',
+      code: nodeLambdaCode('admin-bookings'),
+      timeout: cdk.Duration.seconds(15),
+      memorySize: 256,
+      environment: {
+        BOOKINGS_TABLE: bookingsTable.tableName,
+        USER_POOL_ID: adminUserPool.userPoolId,
+        USER_POOL_CLIENT_ID: adminClient.userPoolClientId,
+      },
+    });
+
+    // Read and update only — the admin screen never deletes a booking.
+    adminBookingsFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['dynamodb:GetItem', 'dynamodb:UpdateItem'],
+      resources: [bookingsTable.tableArn],
+    }));
+    adminBookingsFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['dynamodb:Query'],
+      resources: [`${bookingsTable.tableArn}/index/ByEventDate`],
+    }));
+
     // HTTP API Gateway
     const httpApi = new apigatewayv2.HttpApi(this, 'HttpApi', {
       apiName: 'perfect-events-api',
       corsPreflight: {
-        allowHeaders: ['content-type'],
-        allowMethods: [apigatewayv2.CorsHttpMethod.POST, apigatewayv2.CorsHttpMethod.OPTIONS],
+        allowHeaders: ['content-type', 'authorization'],
+        allowMethods: [
+          apigatewayv2.CorsHttpMethod.GET,
+          apigatewayv2.CorsHttpMethod.POST,
+          apigatewayv2.CorsHttpMethod.PATCH,
+          apigatewayv2.CorsHttpMethod.OPTIONS,
+        ],
         allowOrigins: ['*'],
       },
     });
@@ -143,6 +239,33 @@ export class InfraStack extends cdk.Stack {
       path: '/send-enquiry',
       methods: [apigatewayv2.HttpMethod.POST],
       integration: new integrations.HttpLambdaIntegration('SendEnquiryIntegration', sendEnquiryFn),
+    });
+
+    // API Gateway checks the Cognito JWT before the Lambda ever runs.
+    const adminAuthorizer = new HttpUserPoolAuthorizer('AdminAuthorizer', adminUserPool, {
+      userPoolClients: [adminClient],
+    });
+    const adminIntegration = new integrations.HttpLambdaIntegration('AdminBookingsIntegration', adminBookingsFn);
+
+    // Public: the ids the login screen needs. Nothing secret in there.
+    httpApi.addRoutes({
+      path: '/admin/config',
+      methods: [apigatewayv2.HttpMethod.GET],
+      integration: adminIntegration,
+    });
+
+    httpApi.addRoutes({
+      path: '/admin/bookings',
+      methods: [apigatewayv2.HttpMethod.GET],
+      integration: adminIntegration,
+      authorizer: adminAuthorizer,
+    });
+
+    httpApi.addRoutes({
+      path: '/admin/bookings/{id}',
+      methods: [apigatewayv2.HttpMethod.GET, apigatewayv2.HttpMethod.PATCH],
+      integration: adminIntegration,
+      authorizer: adminAuthorizer,
     });
 
     // Deploy React build to S3
@@ -172,6 +295,14 @@ export class InfraStack extends cdk.Stack {
 
     new cdk.CfnOutput(this, 'ApiEndpoint', {
       value: `${httpApi.apiEndpoint}/send-enquiry`,
+    });
+
+    new cdk.CfnOutput(this, 'AdminUserPoolId', {
+      value: adminUserPool.userPoolId,
+    });
+
+    new cdk.CfnOutput(this, 'AdminUserPoolClientId', {
+      value: adminClient.userPoolClientId,
     });
   }
 }
