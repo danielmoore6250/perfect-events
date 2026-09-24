@@ -45,7 +45,7 @@ export const PLANNING_SECTIONS = [
     fields: [
       { key: 'guestCount', label: 'Number of guests', type: 'number', placeholder: 'Roughly' },
       { key: 'setupAccessTime', label: 'When can we get in to set up?', type: 'time' },
-      { key: 'guestArrivalTime', label: 'Guests arrive', type: 'time' },
+      { key: 'guestArrivalTime', label: 'Guests arrive', type: 'time', eventTypes: ['private', 'corporate', 'pa-hire'] },
       { key: 'mealTime', label: 'Meal served', type: 'time', eventTypes: ['wedding', 'corporate'] },
       { key: 'speechesTime', label: 'Speeches', type: 'time', eventTypes: ['wedding'] },
       { key: 'djStartTime', label: 'DJ starts', type: 'time' },

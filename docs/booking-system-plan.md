@@ -272,8 +272,8 @@ picked up the timings.
   shows it read-only). No date means no lock.
 - Fields: number of guests (prefilled from the enquiry, editable; the client's
   number then wins in the admin view, email and calendar), set-up access, guest
-  arrival, meal (weddings and corporate only), speeches (wedding), DJ start,
-  finish; first dance and parent dances (wedding), last song, must play, do not
+  arrival (not weddings), meal (weddings and corporate only), speeches (wedding),
+  DJ start, finish; first dance and parent dances (wedding), last song, must play, do not
   play, music style, announcements; venue contact name and phone, access notes;
   anything else. Each field can carry `eventTypes` to limit which kinds of event
   show it. Defined once in `src/shared/format.js` for the UI and once in the

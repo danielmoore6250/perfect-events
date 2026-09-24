@@ -100,6 +100,7 @@ test('greets the client by first name with their event details and wedding-only 
   expect(screen.queryByRole('group', { name: 'Play if possible' })).not.toBeInTheDocument();
   expect(screen.getByLabelText('Speeches')).toBeInTheDocument();
   expect(screen.getByLabelText('Meal served')).toBeInTheDocument();
+  expect(screen.queryByLabelText('Guests arrive')).not.toBeInTheDocument();
   expect(screen.getByLabelText('Number of guests')).toHaveValue(150);
   expect(screen.getAllByLabelText('Search for a song')).toHaveLength(1);
   expect(screen.getByLabelText('Adding to')).toHaveValue('mustPlay');
@@ -113,6 +114,7 @@ test('a corporate event keeps the meal time but hides the wedding-only fields an
   expect(screen.queryByRole('group', { name: 'First dance' })).not.toBeInTheDocument();
   expect(screen.queryByLabelText('Speeches')).not.toBeInTheDocument();
   expect(screen.getByLabelText('Meal served')).toBeInTheDocument();
+  expect(screen.getByLabelText('Guests arrive')).toBeInTheDocument();
   expect(screen.getByRole('group', { name: 'Last song of the night' })).toBeInTheDocument();
   expect(within(screen.getByLabelText('Adding to')).queryByRole('option', { name: /First dance/ })).not.toBeInTheDocument();
 });
